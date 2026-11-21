@@ -522,7 +522,7 @@ select.field{appearance:none;-webkit-appearance:none;background-image:linear-gra
 
 <script>
 (() => {
-const APP_VERSION = "1.8";
+const APP_VERSION = "1.9";
 const PALETTE = ["#1f1d1b","#7a2e2a","#23395b","#2f4a3a","#c49a3a","#e6d9bd","#2c5d63","#5a3550","#a2512b","#6b7b8c","#6b6a3a","#8c2f4b","#3d3a6b","#b8b2a3","#45604d","#9b6b43"];
 const FORMATS = ["Blu-ray", "4K Ultra HD", "4K + Blu-ray", "Blu-ray 3D", "DVD"];
 const KEY = "videoteca.films.v1", META_KEY = "videoteca.meta.v1";
@@ -1121,20 +1121,21 @@ function groups(kind){
     let keys;
     if (kind === "genere") keys = (d.genres && d.genres.length) ? d.genres : ["Senza genere"];
     else if (kind === "regista") keys = dirs(d).length ? dirs(d) : ["Regia non indicata"];
+    else if (kind === "attore"){ keys = [...new Set(castRows(d).map(c => c.actor))]; if (!keys.length) keys = ["Cast non indicato"]; }
     else if (kind === "anno") keys = [d.year ? String(d.year) : "Anno sconosciuto"];
     else if (kind === "decennio") keys = [d.year ? `Anni ${Math.floor(d.year / 10) * 10}` : "Anno sconosciuto"];
     else if (kind === "voto") keys = [Number(d.rating) > 0 ? String(Math.round(Number(d.rating) * 2) / 2) : "Senza voto"];
     else keys = [d.format || "Blu-ray"];
-    for (const k of keys){ const kk = kind === "regista" ? pkey(k) : k; if (!m.has(kk)) m.set(kk, { label: k, items: [] }); m.get(kk).items.push(d); }
+    for (const k of keys){ const kk = kind === "regista" || kind === "attore" ? pkey(k) : k; if (!m.has(kk)) m.set(kk, { label: k, items: [] }); m.get(kk).items.push(d); }
   }
   const arr = [...m.entries()].map(([key, v]) => ({ key, label: v.label, items: v.items.sort(filmSort) }));
   if (kind === "anno") return arr.sort((a,b) => (a.label === "Anno sconosciuto") - (b.label === "Anno sconosciuto") || Number(a.label) - Number(b.label));
   if (kind === "decennio") return arr.sort((a,b) => a.label.localeCompare(b.label));
   if (kind === "voto") return arr.sort((a,b) => (a.key === "Senza voto") - (b.key === "Senza voto") || Number(b.key) - Number(a.key));
-  if (kind === "regista" && getMeta().personSort === "alfa") return arr.sort((a,b) => sortName(a.label).localeCompare(sortName(b.label), "it"));
-  return arr.sort((a,b) => (/^(Senza|Regia non)/.test(a.label) - /^(Senza|Regia non)/.test(b.label)) || (b.items.length - a.items.length) || a.label.localeCompare(b.label, "it"));
+  if ((kind === "regista" || kind === "attore") && getMeta().personSort === "alfa") return arr.sort((a,b) => sortName(a.label).localeCompare(sortName(b.label), "it"));
+  return arr.sort((a,b) => (/^(Senza|Regia non|Cast non)/.test(a.label) - /^(Senza|Regia non|Cast non)/.test(b.label)) || (b.items.length - a.items.length) || a.label.localeCompare(b.label, "it"));
 }
-const SUBS = { genere: "Per genere", regista: "Per regista", data: "Per anno di uscita", voto: "Per voto" };
+const SUBS = { genere: "Per genere", regista: "Per regista", attore: "Per attore", data: "Per anno di uscita", voto: "Per voto" };
 const DATE_SUBS = { anno: "Per anno", decennio: "Per decennio" };
 const STAT_TITLES = { ...SUBS, ...DATE_SUBS };
 function statsUp(){ state.statsSub = DATE_SUBS[state.statsSub] ? "data" : null; state.statsOpen = null; renderStats(); window.scrollTo(0,0); }
@@ -1150,10 +1151,10 @@ function renderStats(){
     const gs = groups(sub), max = Math.max(1, ...gs.map(g => g.items.length));
     const al = getMeta().personSort === "alfa";
     let extra = "";
-    if (sub === "regista") extra = `<div class="sortseg"><button data-sort="num" class="${al ? "" : "on"}">Per numero di film</button><button data-sort="alfa" class="${al ? "on" : ""}">Alfabetico</button></div>`;
+    if (sub === "regista" || sub === "attore") extra = `<div class="sortseg"><button data-sort="num" class="${al ? "" : "on"}">Per numero di film</button><button data-sort="alfa" class="${al ? "on" : ""}">Alfabetico</button></div>`;
     if (sub === "voto"){ const r = coll.filter(d => Number(d.rating) > 0); const avg = r.length ? r.reduce((s, d) => s + Number(d.rating), 0) / r.length : 0; extra = `<div class="stat-mini" style="grid-template-columns:repeat(3,1fr)"><div><b>${r.length ? avg.toFixed(1).replace(".", ",") : "–"}</b>voto medio</div><div><b>${r.length}</b>con voto</div><div><b>${coll.length - r.length}</b>senza voto</div></div>`; }
     $("viewStats").innerHTML = `<div class="apage"><button class="backlink" id="sBack">‹ ${DATE_SUBS[sub] ? SUBS.data : "Statistiche"}</button><h2 style="margin-top:8px">${STAT_TITLES[sub]}</h2>${extra}
-      ${sub === "voto" ? "" : `<p class="note">${gs.length} voci. ${sub === "regista" ? "Tocca un regista per aprire la sua pagina." : "Tocca una riga per vedere i film."}</p>`}
+      ${sub === "voto" ? "" : `<p class="note">${gs.length} voci. ${sub === "regista" ? "Tocca un regista per aprire la sua pagina." : sub === "attore" ? "Tocca un attore per aprire la sua pagina." : "Tocca una riga per vedere i film."}</p>`}
       ${gs.map(g => { const open = state.statsOpen === g.key; return `<div class="grp${open ? " open" : ""}"><button class="grow" data-k="${esc(g.key)}" data-l="${esc(g.label)}"><span class="y">${sub === "voto" && g.key !== "Senza voto" ? `<span class="rstars vstars">${starsHTML(Number(g.key))}</span>` : esc(g.label)}</span><span class="track"><span class="fill" style="width:${Math.max(3, g.items.length / max * 100)}%"></span></span><span class="n">${g.items.length}</span></button>
         ${open ? `<div class="grp-list">${g.items.map(d => `<button class="grp-item" data-id="${esc(d.id)}"><b>${esc(d.title)}</b><span>${[d.year, dirStr(d)].filter(Boolean).map(esc).join(" · ")}</span></button>`).join("")}</div>` : ""}</div>`; }).join("")}</div>`;
     return;
@@ -1173,6 +1174,7 @@ $("viewStats").addEventListener("click", e => {
   const it = e.target.closest(".grp-item"); if (it) return openDetail(it.dataset.id);
   const g = e.target.closest(".grow"); if (!g) return;
   if (state.statsSub === "regista" && g.dataset.k !== pkey("Regia non indicata")) return openPerson(g.dataset.l, { view: "statistiche", title: "Per regista", scroll: window.scrollY });
+  if (state.statsSub === "attore" && g.dataset.k !== pkey("Cast non indicato")) return openPerson(g.dataset.l, { view: "statistiche", title: "Per attore", scroll: window.scrollY });
   state.statsOpen = state.statsOpen === g.dataset.k ? null : g.dataset.k; renderStats();
 });
 
