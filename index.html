@@ -528,7 +528,7 @@ select.field{appearance:none;-webkit-appearance:none;background-image:linear-gra
 
 <script>
 (() => {
-const APP_VERSION = "2.4";
+const APP_VERSION = "2.5";
 const PALETTE = ["#1f1d1b","#7a2e2a","#23395b","#2f4a3a","#c49a3a","#e6d9bd","#2c5d63","#5a3550","#a2512b","#6b7b8c","#6b6a3a","#8c2f4b","#3d3a6b","#b8b2a3","#45604d","#9b6b43"];
 const FORMATS = ["Blu-ray", "4K Ultra HD", "4K + Blu-ray", "Blu-ray 3D", "DVD"];
 const KEY = "videoteca.films.v1", META_KEY = "videoteca.meta.v1";
@@ -811,14 +811,14 @@ function renderPerson(){
     <button class="backlink" id="pBack">‹ ${r ? `Torna a «${esc(r.title || "")}»` : "Indietro"}</button>
     <h2 style="margin-top:8px;font-size:34px">${pn(name)}</h2>
     <div class="aphoto-wrap pphoto"><div class="aphoto" id="pPhoto">Nessuna foto</div></div>
-    <div style="text-align:center;margin-top:10px"><button type="button" class="btn ghost small" id="pEdit">Modifica foto</button></div>
     <h2>Info</h2>
     <textarea class="field infoarea" id="pInfo" placeholder="Biografia, filmografia, curiosità…">${esc(info)}</textarea>
     <div class="saved" id="pSaved"></div>
-    <div style="margin-top:8px"><button type="button" class="btn ghost small" id="pBio">Carica biografia</button> <span class="hint" id="pBioMsg"></span></div>
+    <div style="margin-top:8px">${info ? "" : `<button type="button" class="btn ghost small" id="pBio">Carica biografia</button> `}<span class="hint" id="pBioMsg"></span></div>
     ${directed.length ? `<h2>Regia</h2>${directed.map(d => filmRow(d)).join("")}` : ""}
     ${acted.length ? `<h2>Come attore</h2>${acted.map(x => filmRow(x.d, x.r.role ? "nel ruolo di " + x.r.role : "")).join("")}` : ""}
     ${!directed.length && !acted.length ? `<p class="note">Nessun film.</p>` : ""}
+    <div class="actions" style="margin-top:26px"><button type="button" class="btn ghost" id="pEdit">Modifica</button></div>
   </div>`;
   hydrateRows($("viewPerson"));
   drawPersonPhoto(name);
@@ -829,18 +829,7 @@ function renderPerson(){
   const save = () => { const m = getMeta(); const pi = { ...(m.personInfo || {}) }; const v = ta.value.trim(); if (v) pi[k] = v; else delete pi[k]; setMeta("personInfo", pi); setMeta("lastChangeAt", new Date().toISOString()); $("pSaved").textContent = "Salvato"; };
   ta.addEventListener("input", () => { grow(); $("pSaved").textContent = ""; clearTimeout(t); t = setTimeout(() => { t = null; save(); }, 600); });
   ta.addEventListener("blur", () => { if (t){ clearTimeout(t); t = null; save(); } });
-  $("pBio").onclick = async () => {
-    const msg = $("pBioMsg");
-    if (!navigator.onLine){ msg.textContent = "Serve la connessione a internet."; return; }
-    msg.textContent = "Cerco…"; $("pBio").disabled = true;
-    const bio = await findBio(name);
-    if ($("pBio")) $("pBio").disabled = false;
-    if (state.person !== name) return;
-    if (!bio){ msg.textContent = "Non ho trovato una biografia: puoi scriverla tu."; return; }
-    msg.textContent = "";
-    if (ta.value.trim() && !(await askConfirm("Sostituire il testo?", "In Info c'è già del testo: la biografia trovata lo sostituirà.", "Sostituisci"))) return;
-    ta.value = `${bio.text}\n\n(Fonte: ${bio.from})`; grow(); save();
-  };
+  if ($("pBio")) $("pBio").onclick = () => loadBioFor(name);
 }
 async function drawPersonPhoto(name){
   const key = "person:" + pkey(name);
@@ -1068,12 +1057,48 @@ function openChoices(skipped = 0){
     openChoices(skipped);
   };
 }
+let bioRun = null;
+function openBiosMenu(){
+  const all = allPeople(), info = getMeta().personInfo || {};
+  const missing = all.filter(n => !(info[pkey(n)] || "").trim());
+  $("menu").innerHTML = `<h3>Biografie di attori e registi</h3>
+    <p>${all.length} persone: ${missing.length ? `<b>${missing.length} senza biografia</b>` : "hanno già tutte una biografia"}.</p>
+    <p>Cerco la biografia solo per chi non ha niente in Info, prima su Wikipedia in italiano${tmdbKey() ? ", poi su TMDB" : ""} e infine su Wikipedia in inglese. Quello che hai scritto tu non viene mai toccato. Serve internet e ci vuole qualche minuto: tieni l'app aperta. Se la fermi, la prossima volta riparte da chi manca.</p>
+    <p id="bxProg" style="font-weight:600"></p><div class="ok" id="bxOk"></div>
+    <div class="actions"><button class="btn ghost" id="bxBack">Indietro</button>${missing.length ? `<button class="btn" id="bxGo">Scarica le biografie</button>` : ""}</div>`;
+  $("menuOv").hidden = false; $("menu").scrollTop = 0;
+  $("bxBack").onclick = () => { if (bioRun) bioRun.stop = true; openMenu(); };
+  if (!$("bxGo")) return;
+  $("bxGo").onclick = async () => {
+    if (bioRun){ bioRun.stop = true; return; }
+    if (!navigator.onLine){ $("bxOk").textContent = "Serve la connessione a internet."; return; }
+    const run = bioRun = { stop: false }; let i = 0, found = 0, done = 0, pending = {};
+    let lock = null; try { if (navigator.wakeLock) lock = await navigator.wakeLock.request("screen"); } catch(e){}
+    $("bxGo").textContent = "Ferma";
+    // salva a gruppi, così il telefono non riscrive tutto a ogni biografia
+    const flush = () => { if (!Object.keys(pending).length) return; const cur = { ...(getMeta().personInfo || {}) }; for (const [k, v] of Object.entries(pending)) if (!(cur[k] || "").trim()) cur[k] = v; setMeta("personInfo", cur); setMeta("lastChangeAt", new Date().toISOString()); pending = {}; };
+    const worker = async () => {
+      while (!run.stop && i < missing.length){
+        const name = missing[i++]; let b = null; try { b = await findBio(name); } catch(e){}
+        if (b){ pending[pkey(name)] = bioText(b); found++; if (Object.keys(pending).length >= 20) flush(); }
+        done++; if ($("bxProg")) $("bxProg").textContent = `${done} di ${missing.length} · ${plural(found, "biografia trovata", "biografie trovate")}`;
+      }
+    };
+    try { await Promise.all([worker(), worker(), worker(), worker()]); } finally { try { flush(); } catch(e){ if ($("bxOk")) $("bxOk").textContent = "Memoria piena: non riesco a salvare altre biografie."; } }
+    try { if (lock) await lock.release(); } catch(e){}
+    bioRun = null;
+    const miss = done - found;
+    if ($("bxOk") && !$("bxOk").textContent) $("bxOk").textContent = `${run.stop ? "Fermato. " : "Fatto. "}${plural(found, "biografia salvata", "biografie salvate")}${miss ? `; per ${miss} non ho trovato niente` : ""}.`;
+    if ($("bxGo")) { $("bxGo").textContent = run.stop ? "Riprendi" : "Cerca di nuovo"; $("bxGo").onclick = () => openBiosMenu(); }
+  };
+}
 function openPersonEdit(){
   const has = $("pPhoto") && $("pPhoto").classList.contains("has");
   $("menu").innerHTML = `
-    <h3>Foto di ${pn(state.person)}</h3>
+    <h3>${pn(state.person)}</h3>
     <button class="item" id="peUpload">Carica una foto<small>Dalla libreria foto del telefono</small></button>
     <button class="item" id="peOnline">Scegli una foto online<small>${tmdbKey() ? "Da TMDB, Wikipedia e Wikidata" : "Da Wikipedia e Wikidata"} · serve internet</small></button>
+    <button class="item" id="peBio">Carica biografia<small>Da Wikipedia${tmdbKey() ? " o TMDB" : ""} · sostituisce il testo di Info (ti chiedo conferma)</small></button>
     <button class="item" id="peName">Cambia nome<small>Corregge il nome in tutti i film</small></button>
     ${has ? `<button class="item" id="peDel">Togli la foto<small>Ti chiedo conferma prima di eliminarla</small></button>` : ""}
     <div class="actions"><button type="button" class="btn ghost" id="peClose">Annulla</button></div>`;
@@ -1081,6 +1106,7 @@ function openPersonEdit(){
   $("peClose").onclick = () => { $("menuOv").hidden = true; };
   $("peUpload").onclick = () => { $("menuOv").hidden = true; $("personPhotoFile").value = ""; $("personPhotoFile").click(); };
   $("peOnline").onclick = () => { $("menuOv").hidden = true; openPhotoPicker(state.person); };
+  $("peBio").onclick = () => { $("menuOv").hidden = true; loadBioFor(state.person); };
   $("peName").onclick = () => {
     const old = state.person;
     $("menu").innerHTML = `<h3>Cambia nome</h3><p>Il nuovo nome sostituisce «${pn(old)}» in tutti i film. Scrivilo come Nome Cognome: l'app lo mostra da sola come Cognome Nome. Foto e note restano.</p>
@@ -1174,6 +1200,26 @@ async function tmdbBio(name){
   const it = await tmdbGet(`/person/${p.id}?language=it-IT`);
   if ((it.biography || "").trim().length > 40) return { text: it.biography.trim(), from: "TMDB" };
   return null;
+}
+// Tiene l'introduzione: al massimo circa 1500 caratteri, tagliando tra un paragrafo e l'altro
+function trimBio(t){
+  t = String(t || "").trim(); if (t.length <= 1500) return t;
+  const ps = t.split(/\n+/); let out = "";
+  for (const p of ps){ if (out && (out + "\n\n" + p).length > 1500) break; out = out ? out + "\n\n" + p : p; }
+  return out.length > 1500 ? out.slice(0, out.lastIndexOf(". ", 1500) + 1 || 1500) : out;
+}
+const bioText = b => `${trimBio(b.text)}\n\n(Fonte: ${b.from})`;
+async function loadBioFor(name){
+  const msg = $("pBioMsg"), say = t => { if ($("pBioMsg") && state.person === name) $("pBioMsg").textContent = t; };
+  if (!navigator.onLine){ say("Serve la connessione a internet."); return; }
+  say("Cerco la biografia…"); if ($("pBio")) $("pBio").disabled = true;
+  const bio = await findBio(name);
+  if ($("pBio")) $("pBio").disabled = false;
+  if (!bio){ say("Non ho trovato una biografia: puoi scriverla tu."); return; }
+  const k = pkey(name), cur = (getMeta().personInfo || {})[k];
+  if (cur && !(await askConfirm("Sostituire il testo?", "In Info c'è già del testo: la biografia trovata lo sostituirà.", "Sostituisci"))){ say(""); return; }
+  setMeta("personInfo", { ...(getMeta().personInfo || {}), [k]: bioText(bio) }); setMeta("lastChangeAt", new Date().toISOString());
+  if (state.view === "regista" && state.person === name){ const y = window.scrollY; renderPerson(); window.scrollTo(0, y); }
 }
 async function findBio(name){
   for (const f of [() => wikiBio(name, "it"), () => tmdbBio(name), () => wikiBio(name, "en")]){ try { const r = await f(); if (r) return r; } catch(e){} }
@@ -1847,6 +1893,7 @@ function openMenu(msg){
     <button class="item" id="mSnap">Ripristina una copia automatica<small>L'app salva da sola una copia al giorno e tiene le ultime 7</small></button>
     <button class="item" id="mPosters">Locandine mancanti<small>${noCover ? `${noCover === 1 ? "1 film senza locandina" : noCover + " film senza locandina"}: le cerco online` : "Tutti i film hanno la locandina"}</small></button>
     <button class="item" id="mPhotos">Foto di attori e registi<small>${(n => n ? `${plural(n, "persona", "persone")} con più foto da scegliere` : "Cerca online le foto che mancano")(Object.keys(getChoices()).length)}</small></button>
+    <button class="item" id="mBios">Biografie di attori e registi<small>Scarica in un colpo le biografie che mancano</small></button>
     <button class="item" id="mTmdb">TMDB<small>${tmdbKey() ? "Collegato: le foto si cercano prima su TMDB" : "Inserisci la chiave gratuita per trovare le foto di quasi tutti gli attori"}</small></button>
     <button class="item" id="mText">Dimensione testo<small>Ingrandisci o rimpicciolisci il testo nelle schede dei film</small></button>
     <button class="item" id="mCsv">Esporta in Excel<small>File .csv con tutti i film, da aprire con Excel o Numbers</small></button>
@@ -1861,6 +1908,7 @@ function openMenu(msg){
   $("mPosters").onclick = openPostersMenu;
   $("mPhotos").onclick = openPersonPhotosMenu;
   $("mTmdb").onclick = openTmdb;
+  $("mBios").onclick = openBiosMenu;
   $("mText").onclick = openTextSize;
   $("mCsv").onclick = async () => { $("mOk").textContent = await exportCSV(); };
 }
