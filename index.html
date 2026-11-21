@@ -528,7 +528,7 @@ select.field{appearance:none;-webkit-appearance:none;background-image:linear-gra
 
 <script>
 (() => {
-const APP_VERSION = "2.3";
+const APP_VERSION = "2.4";
 const PALETTE = ["#1f1d1b","#7a2e2a","#23395b","#2f4a3a","#c49a3a","#e6d9bd","#2c5d63","#5a3550","#a2512b","#6b7b8c","#6b6a3a","#8c2f4b","#3d3a6b","#b8b2a3","#45604d","#9b6b43"];
 const FORMATS = ["Blu-ray", "4K Ultra HD", "4K + Blu-ray", "Blu-ray 3D", "DVD"];
 const KEY = "videoteca.films.v1", META_KEY = "videoteca.meta.v1";
@@ -815,6 +815,7 @@ function renderPerson(){
     <h2>Info</h2>
     <textarea class="field infoarea" id="pInfo" placeholder="Biografia, filmografia, curiosità…">${esc(info)}</textarea>
     <div class="saved" id="pSaved"></div>
+    <div style="margin-top:8px"><button type="button" class="btn ghost small" id="pBio">Carica biografia</button> <span class="hint" id="pBioMsg"></span></div>
     ${directed.length ? `<h2>Regia</h2>${directed.map(d => filmRow(d)).join("")}` : ""}
     ${acted.length ? `<h2>Come attore</h2>${acted.map(x => filmRow(x.d, x.r.role ? "nel ruolo di " + x.r.role : "")).join("")}` : ""}
     ${!directed.length && !acted.length ? `<p class="note">Nessun film.</p>` : ""}
@@ -828,6 +829,18 @@ function renderPerson(){
   const save = () => { const m = getMeta(); const pi = { ...(m.personInfo || {}) }; const v = ta.value.trim(); if (v) pi[k] = v; else delete pi[k]; setMeta("personInfo", pi); setMeta("lastChangeAt", new Date().toISOString()); $("pSaved").textContent = "Salvato"; };
   ta.addEventListener("input", () => { grow(); $("pSaved").textContent = ""; clearTimeout(t); t = setTimeout(() => { t = null; save(); }, 600); });
   ta.addEventListener("blur", () => { if (t){ clearTimeout(t); t = null; save(); } });
+  $("pBio").onclick = async () => {
+    const msg = $("pBioMsg");
+    if (!navigator.onLine){ msg.textContent = "Serve la connessione a internet."; return; }
+    msg.textContent = "Cerco…"; $("pBio").disabled = true;
+    const bio = await findBio(name);
+    if ($("pBio")) $("pBio").disabled = false;
+    if (state.person !== name) return;
+    if (!bio){ msg.textContent = "Non ho trovato una biografia: puoi scriverla tu."; return; }
+    msg.textContent = "";
+    if (ta.value.trim() && !(await askConfirm("Sostituire il testo?", "In Info c'è già del testo: la biografia trovata lo sostituirà.", "Sostituisci"))) return;
+    ta.value = `${bio.text}\n\n(Fonte: ${bio.from})`; grow(); save();
+  };
 }
 async function drawPersonPhoto(name){
   const key = "person:" + pkey(name);
@@ -1142,6 +1155,29 @@ async function fixNames(){
   const present = new Set(state.films.flatMap(d => [...dirs(d), ...castRows(d).map(c => c.actor)]));
   for (const [a, b] of Object.entries(NAME_FIX)) if (present.has(a)) await renamePerson(a, b);
   setMeta("nameFix1", true);
+}
+
+/* ---------- Biografia: Wikipedia italiana, poi TMDB, poi Wikipedia inglese ---------- */
+async function wikiBio(name, lang){
+  const suff = lang === "it" ? ["attore", "attrice", "regista"] : ["actor", "actress", "director", "filmmaker"];
+  const u = `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*&redirects=1&prop=extracts|description|pageprops&exintro=1&explaintext=1&exlimit=max&titles=` + encodeURIComponent([name, ...suff.map(x => `${name} (${x})`)].join("|"));
+  const j = await (await fetch(u)).json();
+  const p = Object.values(j.query?.pages || {}).find(p => !("missing" in p) && !(p.pageprops && "disambiguation" in p.pageprops) && FILM_RE.test(p.description || "") && (p.extract || "").trim().length > 40);
+  return p ? { text: p.extract.trim().replace(/\n{2,}/g, "\n\n"), from: "Wikipedia" + (lang === "it" ? "" : " (inglese)") } : null;
+}
+async function tmdbBio(name){
+  if (!tmdbKey()) return null;
+  const j = await tmdbGet("/search/person?language=it-IT&query=" + encodeURIComponent(name));
+  const nk = tkey(name);
+  const p = (j.results || []).filter(p => tkey(p.name) === nk || tkey(p.original_name) === nk).sort((a, b) => (b.popularity || 0) - (a.popularity || 0))[0];
+  if (!p) return null;
+  const it = await tmdbGet(`/person/${p.id}?language=it-IT`);
+  if ((it.biography || "").trim().length > 40) return { text: it.biography.trim(), from: "TMDB" };
+  return null;
+}
+async function findBio(name){
+  for (const f of [() => wikiBio(name, "it"), () => tmdbBio(name), () => wikiBio(name, "en")]){ try { const r = await f(); if (r) return r; } catch(e){} }
+  return null;
 }
 
 /* ---------- Locandine mancanti ---------- */
