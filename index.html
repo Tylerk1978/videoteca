@@ -520,7 +520,7 @@ select.field{appearance:none;-webkit-appearance:none;background-image:linear-gra
 
 <script>
 (() => {
-const APP_VERSION = "1.2";
+const APP_VERSION = "1.3";
 const PALETTE = ["#1f1d1b","#7a2e2a","#23395b","#2f4a3a","#c49a3a","#e6d9bd","#2c5d63","#5a3550","#a2512b","#6b7b8c","#6b6a3a","#8c2f4b","#3d3a6b","#b8b2a3","#45604d","#9b6b43"];
 const FORMATS = ["Blu-ray", "4K Ultra HD", "4K + Blu-ray", "Blu-ray 3D", "DVD"];
 const KEY = "videoteca.films.v1", META_KEY = "videoteca.meta.v1";
@@ -1085,7 +1085,7 @@ async function openDetail(id){
   const status = d.list ? "Da trovare" : null;
   const backLbl = { collezione: "Collezione", wishlist: "Da trovare", statistiche: "Statistiche", regista: state.person || "Regista" }[state.view] || "Indietro";
   const ds = dirs(d);
-  const chips = [status, d.kind === "tv" ? "Serie TV" : null, d.format || "Blu-ray", d.edition, d.discs > 1 ? d.discs + " dischi" : null, d.classification === "T" ? "Per tutti" : d.classification].filter(Boolean);
+  const chips = [status, d.kind === "tv" ? "Serie TV" : null, d.edition, d.discs > 1 ? d.discs + " dischi" : null].filter(Boolean);
   $("det").innerHTML = `
     <button class="backlink" id="dBack" style="margin:-4px 0 10px">‹ ${esc(backLbl)}</button>
     <div class="dtop">
@@ -1097,7 +1097,7 @@ async function openDetail(id){
         <div class="yr">${d.releaseDate ? `Uscito il ${fmtDate(d.releaseDate)}` : d.year ? `Uscito nel ${d.year}` : "Anno non indicato"}</div>
         ${d.runtime ? `<div class="yr">Durata ${fmtRuntime(d.runtime)}</div>` : ""}
         ${d.rating ? `<div class="yr" style="letter-spacing:2px;font-size:17px">${starsHTML(d.rating)}</div>` : ""}
-        <div class="chips">${chips.map(c => `<span class="chip">${esc(c)}</span>`).join("")}</div>
+        ${chips.length ? `<div class="chips">${chips.map(c => `<span class="chip">${esc(c)}</span>`).join("")}</div>` : ""}
       </div>
     </div>
     ${d.list ? `<button class="btn bigact" id="dGot">Trovato! Mettilo in collezione</button>` : ""}
