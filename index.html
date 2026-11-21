@@ -361,6 +361,8 @@ select.field{appearance:none;-webkit-appearance:none;background-image:linear-gra
 .cline{display:flex;justify-content:space-between;gap:12px;padding:4px 0;border-bottom:1px solid #3d3226}
 .cline:last-child{border-bottom:0}
 .cline span{color:var(--muted);text-align:right}
+.cline .art{background:none;border:0;padding:0;cursor:pointer;font:600 inherit/1.4 Inter,sans-serif;color:var(--ink);text-align:left;text-decoration:underline;text-decoration-color:rgba(217,166,90,.45);text-underline-offset:3px}
+.drow .th{position:relative}.drow .th img{position:absolute;inset:0}
 </style>
 </head>
 <body>
@@ -520,7 +522,7 @@ select.field{appearance:none;-webkit-appearance:none;background-image:linear-gra
 
 <script>
 (() => {
-const APP_VERSION = "1.3";
+const APP_VERSION = "1.5";
 const PALETTE = ["#1f1d1b","#7a2e2a","#23395b","#2f4a3a","#c49a3a","#e6d9bd","#2c5d63","#5a3550","#a2512b","#6b7b8c","#6b6a3a","#8c2f4b","#3d3a6b","#b8b2a3","#45604d","#9b6b43"];
 const FORMATS = ["Blu-ray", "4K Ultra HD", "4K + Blu-ray", "Blu-ray 3D", "DVD"];
 const KEY = "videoteca.films.v1", META_KEY = "videoteca.meta.v1";
@@ -546,6 +548,8 @@ function letterOf(d){ const c = sortName(d.title).charAt(0).toUpperCase(); retur
 function filmSort(a, b){ return sortName(a.title).localeCompare(sortName(b.title), "it", { numeric: true }) || (Number(a.year)||9999) - (Number(b.year)||9999); }
 const dirs = d => Array.isArray(d.directors) ? d.directors.filter(Boolean) : [];
 const dirStr = d => dirs(d).join(", ");
+// Cast: una riga per attore, "Attore — Personaggio"
+const castRows = d => String(d.cast || "").split("\n").map(l => l.trim()).filter(Boolean).map(l => { const [a, ...c] = l.split(/\s+[—–-]\s+/); return { actor: a.trim(), role: c.join(" – ").trim() }; });
 const pkey = a => norm(String(a || "").trim());
 function extraGenres(){ const x = getMeta().genresExtra; return Array.isArray(x) ? x.filter(g => typeof g === "string" && g) : []; }
 function allGenres(){ const s = new Set(extraGenres()); for (const d of state.films) for (const g of d.genres || []) s.add(g); return [...s].sort((a,b) => a.localeCompare(b, "it")); }
@@ -771,25 +775,25 @@ function goBackFromPerson(){
   if (r.id) openDetail(r.id);
 }
 function starsHTML(r){ return [1,2,3,4,5].map(i => { const f = Math.max(0, Math.min(1, r - (i - 1))) * 100; return `<span class="sg" style="--f:${f}%">★</span>`; }).join(""); }
-function filmRow(d){
+function filmRow(d, role){
   const st = d.list ? " · da trovare" : "";
   const r = Number(d.rating) || 0;
-  return `<button class="drow" data-id="${esc(d.id)}"><span class="th" data-cid="${esc(d.id)}">${spineSpan(d)}</span><span class="rinfo"><b>${esc(d.title)}</b><span>${d.year || "anno ?"}${(d.genres || []).length ? " · " + esc(d.genres.join(", ")) : ""}${st}</span></span>${r ? `<span class="rstars">${starsHTML(r)}</span>` : ""}</button>`;
+  return `<button class="drow" data-id="${esc(d.id)}"><span class="th" data-cid="${esc(d.id)}"><span style="--row:58px;--s:.42;display:flex">${spineSpan(d)}</span></span><span class="rinfo"><b>${esc(d.title)}</b><span>${d.year || "anno ?"}${role ? " · " + esc(role) : (d.genres || []).length ? " · " + esc(d.genres.join(", ")) : ""}${st}</span></span>${r ? `<span class="rstars">${starsHTML(r)}</span>` : ""}</button>`;
 }
-function hydrateRows(root){ root.querySelectorAll(".th[data-cid]").forEach(async el => { const d = state.films.find(x => x.id === el.dataset.cid); const src = d && await coverSrc(d); if (src) el.innerHTML = `<img src="${esc(src)}" alt="" onerror="this.remove()">`; }); }
+function hydrateRows(root){ root.querySelectorAll(".th[data-cid]").forEach(async el => { const d = state.films.find(x => x.id === el.dataset.cid); const src = d && await coverSrc(d); if (src) el.insertAdjacentHTML("beforeend", `<img src="${esc(src)}" alt="" onerror="this.remove()">`); }); }
 function renderPerson(){
   const name = state.person, k = pkey(name);
-  const mine = state.films.filter(d => dirs(d).some(x => pkey(x) === k));
-  const coll = mine.filter(d => !d.list).sort((a,b) => (a.year || 9999) - (b.year || 9999));
-  const other = mine.filter(d => d.list);
+  const byYear = (a, b) => (!!a.list - !!b.list) || (a.year || 9999) - (b.year || 9999);
+  const directed = state.films.filter(d => dirs(d).some(x => pkey(x) === k)).sort(byYear);
+  const acted = state.films.map(d => ({ d, r: castRows(d).find(c => pkey(c.actor) === k) })).filter(x => x.r).sort((a, b) => byYear(a.d, b.d));
   const info = (getMeta().personInfo || {})[k] || "";
   const r = state.personReturn;
   $("viewPerson").innerHTML = `<div class="apage">
     <button class="backlink" id="pBack">‹ ${r ? `Torna a «${esc(r.title || "")}»` : "Indietro"}</button>
     <h2 style="margin-top:8px;font-size:34px">${esc(name)}</h2>
-    <h2>Film in collezione</h2>
-    ${coll.map(filmRow).join("") || `<p class="note">Nessun film in collezione.</p>`}
-    ${other.length ? `<h2>Da trovare</h2>${other.map(filmRow).join("")}` : ""}
+    ${directed.length ? `<h2>Regia</h2>${directed.map(d => filmRow(d)).join("")}` : ""}
+    ${acted.length ? `<h2>Come attore</h2>${acted.map(x => filmRow(x.d, x.r.role ? "nel ruolo di " + x.r.role : "")).join("")}` : ""}
+    ${!directed.length && !acted.length ? `<p class="note">Nessun film.</p>` : ""}
     <div class="aphoto-wrap"><div class="aphoto" id="pPhoto">Nessuna foto</div></div>
     <h2>Info</h2>
     <textarea class="field infoarea" id="pInfo" placeholder="Biografia, filmografia, curiosità…">${esc(info)}</textarea>
@@ -936,7 +940,7 @@ function openPersonEdit(){
   $("peOnline").onclick = () => { $("menuOv").hidden = true; openPhotoPicker(state.person); };
   if (has) $("peDel").onclick = async () => {
     $("menuOv").hidden = true;
-    if (!(await askConfirm("Togliere la foto?", "La foto del regista verrà eliminata.", "Togli", true))) return;
+    if (!(await askConfirm("Togliere la foto?", "La foto verrà eliminata.", "Togli", true))) return;
     const k = pkey(state.person), key = "person:" + k;
     try { await idb.del(key); } catch(err){}
     const urls = { ...personUrlMap() }; delete urls[k]; setMeta("personPhotoUrls", urls);
@@ -1020,7 +1024,7 @@ function groups(kind){
   if (kind === "regista" && getMeta().personSort === "alfa") return arr.sort((a,b) => sortName(a.label).localeCompare(sortName(b.label), "it"));
   return arr.sort((a,b) => (/^(Senza|Regia non)/.test(a.label) - /^(Senza|Regia non)/.test(b.label)) || (b.items.length - a.items.length) || a.label.localeCompare(b.label, "it"));
 }
-const SUBS = { genere: "Per genere", regista: "Per regista", data: "Per anno di uscita", voto: "Per voto", formato: "Per formato" };
+const SUBS = { genere: "Per genere", regista: "Per regista", data: "Per anno di uscita", voto: "Per voto" };
 const DATE_SUBS = { anno: "Per anno", decennio: "Per decennio" };
 const STAT_TITLES = { ...SUBS, ...DATE_SUBS };
 function statsUp(){ state.statsSub = DATE_SUBS[state.statsSub] ? "data" : null; state.statsOpen = null; renderStats(); window.scrollTo(0,0); }
@@ -1039,7 +1043,7 @@ function renderStats(){
     if (sub === "regista") extra = `<div class="sortseg"><button data-sort="num" class="${al ? "" : "on"}">Per numero di film</button><button data-sort="alfa" class="${al ? "on" : ""}">Alfabetico</button></div>`;
     if (sub === "voto"){ const r = coll.filter(d => Number(d.rating) > 0); const avg = r.length ? r.reduce((s, d) => s + Number(d.rating), 0) / r.length : 0; extra = `<div class="stat-mini" style="grid-template-columns:repeat(3,1fr)"><div><b>${r.length ? avg.toFixed(1).replace(".", ",") : "–"}</b>voto medio</div><div><b>${r.length}</b>con voto</div><div><b>${coll.length - r.length}</b>senza voto</div></div>`; }
     $("viewStats").innerHTML = `<div class="apage"><button class="backlink" id="sBack">‹ ${DATE_SUBS[sub] ? SUBS.data : "Statistiche"}</button><h2 style="margin-top:8px">${STAT_TITLES[sub]}</h2>${extra}
-      <p class="note">${gs.length} voci. ${sub === "regista" ? "Tocca un regista per aprire la sua pagina." : "Tocca una riga per vedere i film."}</p>
+      ${sub === "voto" ? "" : `<p class="note">${gs.length} voci. ${sub === "regista" ? "Tocca un regista per aprire la sua pagina." : "Tocca una riga per vedere i film."}</p>`}
       ${gs.map(g => { const open = state.statsOpen === g.key; return `<div class="grp${open ? " open" : ""}"><button class="grow" data-k="${esc(g.key)}" data-l="${esc(g.label)}"><span class="y">${sub === "voto" && g.key !== "Senza voto" ? `<span class="rstars vstars">${starsHTML(Number(g.key))}</span>` : esc(g.label)}</span><span class="track"><span class="fill" style="width:${Math.max(3, g.items.length / max * 100)}%"></span></span><span class="n">${g.items.length}</span></button>
         ${open ? `<div class="grp-list">${g.items.map(d => `<button class="grp-item" data-id="${esc(d.id)}"><b>${esc(d.title)}</b><span>${[d.year, dirStr(d)].filter(Boolean).map(esc).join(" · ")}</span></button>`).join("")}</div>` : ""}</div>`; }).join("")}</div>`;
     return;
@@ -1076,14 +1080,13 @@ function askConfirm(title, text, ok = "Conferma", danger = false){
 
 /* ---------- Scheda film ---------- */
 const fmtDate = iso => iso.split("-").reverse().join("-");
-function castHTML(t){
-  const lines = String(t || "").split("\n").map(l => l.trim()).filter(Boolean);
-  return lines.map(l => { const [a, ...c] = l.split(/\s+[—–-]\s+/); return `<div class="cline"><b>${esc(a)}</b>${c.length ? `<span>${esc(c.join(" – "))}</span>` : ""}</div>`; }).join("");
+function castHTML(d){
+  return castRows(d).map(c => `<div class="cline"><button class="art" data-person="${esc(c.actor)}">${esc(c.actor)}</button>${c.role ? `<span>${esc(c.role)}</span>` : ""}</div>`).join("");
 }
 async function openDetail(id){
   const d = state.films.find(x => x.id === id); if (!d) return;
   const status = d.list ? "Da trovare" : null;
-  const backLbl = { collezione: "Collezione", wishlist: "Da trovare", statistiche: "Statistiche", regista: state.person || "Regista" }[state.view] || "Indietro";
+  const backLbl = { collezione: "Collezione", wishlist: "Da trovare", statistiche: "Statistiche", regista: state.person || "Indietro" }[state.view] || "Indietro";
   const ds = dirs(d);
   const chips = [status, d.kind === "tv" ? "Serie TV" : null, d.edition, d.discs > 1 ? d.discs + " dischi" : null].filter(Boolean);
   $("det").innerHTML = `
@@ -1093,7 +1096,7 @@ async function openDetail(id){
       <div class="dinfo">
         <h3 style="margin-bottom:6px">${esc(d.title)}</h3>
         ${d.originalTitle && tkey(d.originalTitle) !== tkey(d.title) ? `<div class="otitle">${esc(d.originalTitle)}</div>` : ""}
-        ${ds.length ? `<div class="yr">Regia di ${ds.map(n => `<button class="art" data-dir="${esc(n)}">${esc(n)}</button>`).join(", ")}</div>` : ""}
+        ${ds.length ? `<div class="yr">Regia di ${ds.map(n => `<button class="art" data-person="${esc(n)}">${esc(n)}</button>`).join(", ")}</div>` : ""}
         <div class="yr">${d.releaseDate ? `Uscito il ${fmtDate(d.releaseDate)}` : d.year ? `Uscito nel ${d.year}` : "Anno non indicato"}</div>
         ${d.runtime ? `<div class="yr">Durata ${fmtRuntime(d.runtime)}</div>` : ""}
         ${d.rating ? `<div class="yr" style="letter-spacing:2px;font-size:17px">${starsHTML(d.rating)}</div>` : ""}
@@ -1104,7 +1107,7 @@ async function openDetail(id){
     ${d.trailer || d.imdb ? `<div class="links">${d.trailer ? `<a class="btn ghost small" href="https://www.youtube.com/watch?v=${encodeURIComponent(d.trailer)}" target="_blank" rel="noopener">▶ Trailer</a>` : ""}${d.imdb ? `<a class="btn ghost small" href="https://www.imdb.com/title/${encodeURIComponent(d.imdb)}/" target="_blank" rel="noopener">IMDb</a>` : ""}</div>` : ""}
     ${d.summary ? `<div class="dsec"><h4>Trama</h4><div class="box">${esc(d.summary)}</div></div>` : ""}
     ${(d.genres || []).length ? `<div class="dsec"><h4>Genere</h4><div class="box">${d.genres.map(esc).join(", ")}</div></div>` : ""}
-    ${d.cast ? `<div class="dsec"><h4>Cast</h4><div class="box cast">${castHTML(d.cast)}</div></div>` : ""}
+    ${d.cast ? `<div class="dsec"><h4>Cast</h4><div class="box cast">${castHTML(d)}</div></div>` : ""}
     ${d.languages ? `<div class="dsec"><h4>Lingue</h4><div class="box">${esc(d.languages)}</div></div>` : ""}
     ${d.notes ? `<div class="dsec"><h4>Note</h4><div class="box">${esc(d.notes)}</div></div>` : ""}
     <div class="actions">
@@ -1118,7 +1121,7 @@ async function openDetail(id){
   $("dClose").onclick = () => { $("detOv").hidden = true; };
   $("dBack").onclick = () => $("dClose").click();
   $("dEdit").onclick = () => { $("detOv").hidden = true; openForm(d, d.list || null); };
-  $("det").querySelectorAll("[data-dir]").forEach(b => b.onclick = () => { $("detOv").hidden = true; openPerson(b.dataset.dir, { view: state.view, id: d.id, title: d.title, scroll: window.scrollY, person: state.person }); });
+  $("det").querySelectorAll("[data-person]").forEach(b => b.onclick = () => { $("detOv").hidden = true; openPerson(b.dataset.person, { view: state.view, id: d.id, title: d.title, scroll: window.scrollY, person: state.person }); });
   $("dDel").onclick = async () => {
     if (!(await askConfirm("Eliminare il film?", `«${d.title}» verrà eliminato.`, "Elimina", true))) return;
     state.films = state.films.filter(x => x.id !== id); dropCover(id); try { await idb.del(id); } catch(e){} try { persist(); } catch(e){}
