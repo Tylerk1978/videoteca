@@ -368,6 +368,7 @@ select.field{appearance:none;-webkit-appearance:none;background-image:linear-gra
 .grow .y{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.25;overflow-wrap:anywhere}
 .grow .track{height:8px}
 .stat-mini + .grp{margin-top:16px}
+.pphoto{margin-top:6px}.pphoto .aphoto{width:46%;max-width:200px}
 </style>
 </head>
 <body>
@@ -527,7 +528,7 @@ select.field{appearance:none;-webkit-appearance:none;background-image:linear-gra
 
 <script>
 (() => {
-const APP_VERSION = "2.2";
+const APP_VERSION = "2.3";
 const PALETTE = ["#1f1d1b","#7a2e2a","#23395b","#2f4a3a","#c49a3a","#e6d9bd","#2c5d63","#5a3550","#a2512b","#6b7b8c","#6b6a3a","#8c2f4b","#3d3a6b","#b8b2a3","#45604d","#9b6b43"];
 const FORMATS = ["Blu-ray", "4K Ultra HD", "4K + Blu-ray", "Blu-ray 3D", "DVD"];
 const KEY = "videoteca.films.v1", META_KEY = "videoteca.meta.v1";
@@ -809,19 +810,19 @@ function renderPerson(){
   $("viewPerson").innerHTML = `<div class="apage">
     <button class="backlink" id="pBack">‹ ${r ? `Torna a «${esc(r.title || "")}»` : "Indietro"}</button>
     <h2 style="margin-top:8px;font-size:34px">${pn(name)}</h2>
-    ${directed.length ? `<h2>Regia</h2>${directed.map(d => filmRow(d)).join("")}` : ""}
-    ${acted.length ? `<h2>Come attore</h2>${acted.map(x => filmRow(x.d, x.r.role ? "nel ruolo di " + x.r.role : "")).join("")}` : ""}
-    ${!directed.length && !acted.length ? `<p class="note">Nessun film.</p>` : ""}
-    <div class="aphoto-wrap"><div class="aphoto" id="pPhoto">Nessuna foto</div></div>
+    <div class="aphoto-wrap pphoto"><div class="aphoto" id="pPhoto">Nessuna foto</div></div>
+    <div style="text-align:center;margin-top:10px"><button type="button" class="btn ghost small" id="pEdit">Modifica foto</button></div>
     <h2>Info</h2>
     <textarea class="field infoarea" id="pInfo" placeholder="Biografia, filmografia, curiosità…">${esc(info)}</textarea>
     <div class="saved" id="pSaved"></div>
-    <div class="actions" style="margin-top:22px"><button type="button" class="btn ghost" id="pEdit">Modifica foto</button></div>
+    ${directed.length ? `<h2>Regia</h2>${directed.map(d => filmRow(d)).join("")}` : ""}
+    ${acted.length ? `<h2>Come attore</h2>${acted.map(x => filmRow(x.d, x.r.role ? "nel ruolo di " + x.r.role : "")).join("")}` : ""}
+    ${!directed.length && !acted.length ? `<p class="note">Nessun film.</p>` : ""}
   </div>`;
   hydrateRows($("viewPerson"));
   drawPersonPhoto(name);
   const ta = $("pInfo");
-  const grow = () => { const y = window.scrollY; ta.style.height = "1px"; ta.style.height = Math.max(140, ta.scrollHeight + 2) + "px"; window.scrollTo(0, y); };
+  const grow = () => { const y = window.scrollY; ta.style.height = "1px"; ta.style.height = Math.max(90, ta.scrollHeight + 2) + "px"; window.scrollTo(0, y); };
   grow();
   let t = null;
   const save = () => { const m = getMeta(); const pi = { ...(m.personInfo || {}) }; const v = ta.value.trim(); if (v) pi[k] = v; else delete pi[k]; setMeta("personInfo", pi); setMeta("lastChangeAt", new Date().toISOString()); $("pSaved").textContent = "Salvato"; };

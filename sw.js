@@ -1,5 +1,5 @@
 // Service worker: rende "Videoteca" utilizzabile offline.
-const CACHE = "videoteca-v13";
+const CACHE = "videoteca-v14";
 const COVERS = "videoteca-covers";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
 
