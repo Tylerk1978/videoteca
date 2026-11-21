@@ -368,19 +368,9 @@ select.field{appearance:none;-webkit-appearance:none;background-image:linear-gra
     <div class="card-body"><div class="card-title">Collezione</div><div class="card-sub" id="homeCollSub"></div></div>
     <span class="chev">›</span>
   </button>
-  <button class="card" id="goInc">
-    <div class="card-art" id="homeInc"></div>
-    <div class="card-body"><div class="card-title">In arrivo</div><div class="card-sub" id="homeIncSub"></div></div>
-    <span class="chev">›</span>
-  </button>
   <button class="card" id="goWish">
     <div class="card-art" id="homeWish"></div>
-    <div class="card-body"><div class="card-title">Wishlist</div><div class="card-sub" id="homeWishSub"></div></div>
-    <span class="chev">›</span>
-  </button>
-  <button class="card" id="goRel">
-    <div class="card-art pie"><svg viewBox="0 0 96 84" width="100%" height="100%" aria-hidden="true"><rect x="14" y="14" width="68" height="60" rx="7" fill="#e9dcc0"/><rect x="14" y="14" width="68" height="16" rx="7" fill="#9e5a2e"/><rect x="14" y="24" width="68" height="6" fill="#9e5a2e"/><rect x="28" y="8" width="5" height="13" rx="2.5" fill="#3a2c1f"/><rect x="63" y="8" width="5" height="13" rx="2.5" fill="#3a2c1f"/><g fill="#b5a487"><rect x="22" y="37" width="9" height="7" rx="1.5"/><rect x="36" y="37" width="9" height="7" rx="1.5"/><rect x="50" y="37" width="9" height="7" rx="1.5"/><rect x="22" y="49" width="9" height="7" rx="1.5"/><rect x="36" y="49" width="9" height="7" rx="1.5"/><rect x="22" y="61" width="9" height="7" rx="1.5"/></g><circle cx="66" cy="60" r="19" fill="#cfd4dc"/><circle cx="66" cy="60" r="14" fill="none" stroke="#aab2be"/><circle cx="66" cy="60" r="9" fill="none" stroke="#aab2be"/><circle cx="66" cy="60" r="6" fill="#2f6fc4"/><circle cx="66" cy="60" r="1.6" fill="#16120f"/></svg></div>
-    <div class="card-body"><div class="card-title">Nuove uscite</div><div class="card-sub" id="homeRelSub"></div></div>
+    <div class="card-body"><div class="card-title">Da trovare</div><div class="card-sub" id="homeWishSub"></div></div>
     <span class="chev">›</span>
   </button>
   <button class="card" id="goStats">
@@ -411,15 +401,6 @@ select.field{appearance:none;-webkit-appearance:none;background-image:linear-gra
 
 <section id="viewPerson" class="wrap" hidden></section>
 <section id="viewStats" class="wrap" hidden></section>
-<section id="viewRel" class="wrap" hidden>
-  <div class="controls">
-    <div class="search">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input class="field" id="rq" type="search" placeholder="Cerca titolo o regista" autocomplete="off">
-    </div>
-  </div>
-  <div id="relMain"></div>
-</section>
 
 <section id="viewLists" class="wrap" hidden>
   <div class="controls">
@@ -525,10 +506,10 @@ select.field{appearance:none;-webkit-appearance:none;background-image:linear-gra
 
 <script>
 (() => {
-const APP_VERSION = "1.0";
+const APP_VERSION = "1.1";
 const PALETTE = ["#1f1d1b","#7a2e2a","#23395b","#2f4a3a","#c49a3a","#e6d9bd","#2c5d63","#5a3550","#a2512b","#6b7b8c","#6b6a3a","#8c2f4b","#3d3a6b","#b8b2a3","#45604d","#9b6b43"];
 const FORMATS = ["Blu-ray", "4K Ultra HD", "4K + Blu-ray", "Blu-ray 3D", "DVD"];
-const KEY = "videoteca.films.v1", META_KEY = "videoteca.meta.v1", REL_KEY = "videoteca.releases.v1";
+const KEY = "videoteca.films.v1", META_KEY = "videoteca.meta.v1";
 const state = { person: null, personReturn: null, statsSub: null, statsOpen: null, mode: "spine", films: [], view: "home", q: "", genre: "", year: "", fdir: "", lq: "", rq: "", newId: null, editing: null, formList: null, fgenres: [], color: "", pending: null, rating: 0 };
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -645,118 +626,23 @@ function hydrateCovers(root){
   });
 }
 
-/* ---------- Nuove uscite ---------- */
-const MESI = ["gen","feb","mar","apr","mag","giu","lug","ago","set","ott","nov","dic"];
-function getRels(){ try { const a = JSON.parse(localStorage.getItem(REL_KEY) || "[]"); return Array.isArray(a) ? a : []; } catch(e){ return []; } }
-function setRels(a){ try { localStorage.setItem(REL_KEY, JSON.stringify(a)); } catch(e){ throw { code: "storage" }; } setMeta("lastChangeAt", new Date().toISOString()); }
-function cleanRels(a){ return (Array.isArray(a) ? a : []).filter(r => r && typeof r.title === "string").map(r => ({ id: String(r.id || "u" + Math.random().toString(36).slice(2,10)), date: typeof r.date === "string" && /^\d{4}(-\d{2}-\d{2})?$/.test(r.date) ? r.date : null, title: r.title.slice(0, 160), director: typeof r.director === "string" ? r.director.slice(0, 120) : "", createdAt: typeof r.createdAt === "string" ? r.createdAt : new Date().toISOString() })); }
-const relKey = r => r.date ? (r.date.length === 4 ? r.date + "-12-31" : r.date) : "9999-12-31";
-function relSplit(){
-  const today = dayKey(), all = getRels();
-  const next = all.filter(r => relKey(r) >= today).sort((a,b) => relKey(a).localeCompare(relKey(b)) || a.title.localeCompare(b.title, "it"));
-  const past = all.filter(r => relKey(r) < today).sort((a,b) => relKey(b).localeCompare(relKey(a)));
-  return { next, past, all };
-}
-function relDateBox(r){
-  if (!r.date) return `<div class="rdate"><b>?</b><span>da def.</span></div>`;
-  if (r.date.length === 4) return `<div class="rdate"><b>${r.date}</b></div>`;
-  const [y, m, d] = r.date.split("-");
-  return `<div class="rdate"><b>${+d}</b><span>${MESI[+m - 1]} ${y.slice(2)}</span></div>`;
-}
-function relRow(r, past, gap){ return `<button class="rrow${past ? " past" : ""}${gap ? " newday" : ""}" data-rel="${esc(r.id)}">${relDateBox(r)}<span class="rtxt"><b>${esc(r.title)}</b><span>${esc(r.director || "")}</span></span><span class="chev">›</span></button>`; }
-function relRows(list, past){ return list.map((r, i) => relRow(r, past, i > 0 && (list[i - 1].date || "") !== (r.date || ""))).join(""); }
-function renderRel(){
-  const { next, past, all } = relSplit();
-  $("homeRelSub").textContent = next.length ? `${next.length} in arrivo · il prossimo: ${next[0].title}` : "I film che aspetti in Blu-ray";
-  if (state.view !== "uscite") return;
-  const q = state.rq ? norm(state.rq) : "";
-  const fit = r => !q || norm(r.title).includes(q) || norm(r.director).includes(q);
-  const nextF = next.filter(fit), pastF = past.filter(fit);
-  if (q && !nextF.length && !pastF.length){ $("relMain").innerHTML = `<div class="sechead"><h2>Nuove uscite</h2><button class="linkbtn add" id="relAdd">+ Aggiungi</button></div><p class="nores">Nessuna uscita corrisponde alla ricerca</p>`; return; }
-  $("relMain").innerHTML = `
-    <div class="sechead"><h2>Nuove uscite</h2><span>${q ? `${nextF.length} di ${next.length}` : `${next.length} in arrivo`}</span><button class="linkbtn add" id="relAdd">+ Aggiungi</button></div>
-    ${nextF.length ? `<div class="rlist">${relRows(nextF)}</div>` : `<p class="nores">${q ? "Nessuna uscita in programma corrisponde alla ricerca." : all.length ? "Nessuna uscita in programma." : "Aggiungi le uscite in Blu-ray che aspetti: data, titolo e regista."}</p>`}
-    ${pastF.length ? `<div class="sechead" style="margin-top:22px"><h2 style="font-size:22px">Già uscite</h2><span>${pastF.length}</span></div><div class="rlist">${relRows(pastF, true)}</div>` : ""}`;
-}
-$("rq").addEventListener("input", e => { state.rq = e.target.value.trim(); renderRel(); });
-$("viewRel").addEventListener("click", e => {
-  if (e.target.closest("#relAdd")) return openRelForm(null);
-  const r = e.target.closest("[data-rel]"); if (r) openRelForm(r.dataset.rel);
-});
-function openRelForm(id){
-  const r = id ? getRels().find(x => x.id === id) : null; if (id && !r) return;
-  const dv = r && r.date ? (r.date.length === 4 ? r.date : fmtDate(r.date)) : "";
-  $("menu").innerHTML = `
-    <h3>${r ? "Modifica uscita" : "Nuova uscita"}</h3>
-    <label for="rDate">Data di uscita</label>
-    <input class="field" id="rDate" inputmode="numeric" autocomplete="off" placeholder="es. 30102026 oppure 2026" value="${esc(dv)}">
-    <div class="hint">Scrivi solo i numeri: i trattini si mettono da soli. Per l'anno basta 2026.</div>
-    <label for="rTitle">Titolo</label>
-    <input class="field" id="rTitle" autocomplete="off" value="${esc(r ? r.title : "")}">
-    <label for="rDir">Regia</label>
-    <input class="field" id="rDir" autocomplete="off" value="${esc(r ? r.director : "")}" placeholder="Facoltativo">
-    <div class="err" id="rErr"></div>
-    ${r ? `<button type="button" class="btn ghost" id="rWish" style="width:100%;margin-top:12px">Metti in wishlist</button>` : ""}
-    <div class="actions">${r ? `<button type="button" class="btn ghost" id="rDel">Elimina</button>` : ""}<button type="button" class="btn ghost" id="rCancel">Annulla</button><button type="button" class="btn" id="rSave">Salva</button></div>`;
-  $("menuOv").hidden = false; $("menu").scrollTop = 0;
-  if (!r) setTimeout(() => $("rDate").focus(), 50);
-  $("rDate").addEventListener("input", e => {
-    const v = e.target.value; if (!/^[\d\s\-\/.]*$/.test(v)) return;
-    const dg = v.replace(/\D/g, "").slice(0, 8);
-    e.target.value = dg.length > 4 ? dg.slice(0, 2) + "-" + dg.slice(2, 4) + "-" + dg.slice(4) : dg;
-  });
-  $("rCancel").onclick = () => { $("menuOv").hidden = true; };
-  const read = () => {
-    const pd = parseRelease($("rDate").value), title = $("rTitle").value.trim(), director = $("rDir").value.trim();
-    if (pd === null){ $("rErr").textContent = "Data non valida: scrivi 30102026 (giorno, mese, anno) oppure solo l'anno."; return null; }
-    if (!title){ $("rErr").textContent = "Serve il titolo."; return null; }
-    return { date: pd.date || (pd.year ? String(pd.year) : null), title, director };
-  };
-  $("rSave").onclick = async () => {
-    const v = read(); if (!v) return;
-    if (r && !(await askConfirm("Salvare le modifiche?", `«${v.title}».`, "Salva"))) return;
-    try {
-      const all = getRels();
-      setRels(r ? all.map(x => x.id === r.id ? { ...x, ...v } : x) : [...all, { id: "u" + Date.now().toString(36) + Math.random().toString(36).slice(2,6), ...v, createdAt: new Date().toISOString() }]);
-      $("menuOv").hidden = true; renderRel();
-    } catch(e){ $("rErr").textContent = "Non riesco a salvare: memoria piena?"; }
-  };
-  if (r){
-    $("rDel").onclick = async () => {
-      if (!(await askConfirm("Eliminare l'uscita?", `«${r.title}» verrà tolto dalla lista.`, "Elimina", true))) return;
-      setRels(getRels().filter(x => x.id !== r.id)); $("menuOv").hidden = true; renderRel();
-    };
-    $("rWish").onclick = async () => {
-      const pd = r.date ? parseRelease(r.date.length === 4 ? r.date : fmtDate(r.date)) : null;
-      if (!(await confirmDupes(r.title, null, null))) return;
-      if (!(await askConfirm("Mettere in wishlist?", `«${r.title}» verrà aggiunto alla wishlist. L'uscita resta anche in questa lista.`, "Aggiungi"))) return;
-      state.films.push({ id: "f" + Date.now().toString(36) + Math.random().toString(36).slice(2,6), title: r.title, directors: r.director ? r.director.split(/\s*,\s*/).filter(Boolean) : [], year: pd ? pd.year : null, ...(pd && pd.date ? { releaseDate: pd.date } : {}), genres: null, format: "Blu-ray", list: "wish", createdAt: new Date().toISOString() });
-      try { persist(); } catch(e){ $("rErr").textContent = "Non riesco a salvare."; return; }
-      $("menuOv").hidden = true; render();
-    };
-  }
-}
-
 /* ---------- Pagine ---------- */
-const VIEWS = ["home","collezione","wishlist","inarrivo","regista","statistiche","uscite"];
+const VIEWS = ["home","collezione","wishlist","regista","statistiche"];
 function showView(v, push = true){
   if (!VIEWS.includes(v)) v = "home";
   if (v === "regista" && !state.person) v = "home";
-  if (state.view !== v){ state.lq = ""; $("lq").value = ""; state.rq = ""; $("rq").value = ""; }
+  if (state.view !== v){ state.lq = ""; $("lq").value = ""; }
   state.view = v;
   document.documentElement.classList.toggle("homeview", v === "home");
-  $("viewHome").hidden = v !== "home"; $("viewColl").hidden = v !== "collezione"; $("viewLists").hidden = !(v === "wishlist" || v === "inarrivo");
-  $("viewPerson").hidden = v !== "regista"; $("viewStats").hidden = v !== "statistiche"; $("viewRel").hidden = v !== "uscite";
-  $("backBtn").hidden = v === "home"; $("addBtn").hidden = !["collezione","wishlist","inarrivo","uscite"].includes(v);
-  $("addBtn").textContent = v === "uscite" ? "+ Aggiungi uscita" : "+ Aggiungi film";
+  $("viewHome").hidden = v !== "home"; $("viewColl").hidden = v !== "collezione"; $("viewLists").hidden = v !== "wishlist";
+  $("viewPerson").hidden = v !== "regista"; $("viewStats").hidden = v !== "statistiche";
+  $("backBtn").hidden = v === "home"; $("addBtn").hidden = !["collezione","wishlist"].includes(v);
   if (push){ const h = v === "home" ? "" : "#" + v; if (location.hash !== h) history.pushState(null, "", h || location.pathname); }
   window.scrollTo(0, 0); render();
 }
 window.addEventListener("popstate", () => showView((location.hash || "").slice(1), false));
 $("goColl").onclick = () => showView("collezione");
 $("goWish").onclick = () => showView("wishlist");
-$("goInc").onclick = () => showView("inarrivo");
-$("goRel").onclick = () => showView("uscite");
 $("goStats").onclick = () => { state.statsSub = null; state.statsOpen = null; showView("statistiche"); };
 $("backBtn").onclick = () => {
   if (state.view === "regista" && state.personReturn) return goBackFromPerson();
@@ -764,25 +650,23 @@ $("backBtn").onclick = () => {
   showView("home");
 };
 $("homeLink").onclick = () => { state.personReturn = null; showView("home"); };
-$("addBtn").onclick = () => state.view === "uscite" ? openRelForm(null) : openForm(null, state.view === "wishlist" ? "wish" : state.view === "inarrivo" ? "incoming" : null);
+$("addBtn").onclick = () => openForm(null, state.view === "wishlist" ? "wish" : null);
 
 function render(){
   const coll = collection();
   $("sub").textContent = coll.length ? `${nFilm(coll.length)} in collezione` : "La videoteca ti aspetta";
-  renderHome(); renderColl(); renderLists(); renderRel();
+  renderHome(); renderColl(); renderLists();
   if (state.view === "regista") renderPerson();
   if (state.view === "statistiche") renderStats();
 }
 function renderHome(){
-  const coll = collection().sort(filmSort), wish = listOf("wish"), inc = listOf("incoming");
+  const coll = collection().sort(filmSort), wish = listOf("wish");
   const deco = PALETTE.slice(0, 11).map((c, i) => ({ id: "d" + i, title: "", color: c }));
   const mini = arr => arr.map(d => `<div style="--row:78px;--s:.32">${spineSpan(d)}</div>`).join("");
   $("homeColl").innerHTML = mini(coll.length ? coll.slice(0, 13) : deco);
   $("homeCollSub").textContent = coll.length ? nFilm(coll.length) : "Aggiungi il tuo primo film";
   $("homeWish").innerHTML = mini([...wish, ...deco].slice(0, 8)) + DISC_SVG;
-  $("homeWishSub").textContent = wish.length ? `${nFilm(wish.length)} da comprare` : "I film che vorresti";
-  $("homeInc").innerHTML = mini([...inc, ...deco.slice(3)].slice(0, 8)) + BOX_SVG;
-  $("homeIncSub").textContent = inc.length ? `${nFilm(inc.length)} ${inc.length === 1 ? "ordinato" : "ordinati"}` : "Ordinati, non ancora arrivati";
+  $("homeWishSub").textContent = wish.length ? `${nFilm(wish.length)} da cercare` : "I film che stai cercando";
   const mins = coll.reduce((s, d) => s + (Number(d.runtime) || 0), 0);
   $("homeStatsSub").textContent = mins ? `${Math.round(mins / 60)} ore di film sugli scaffali` : "Generi, registi, anni";
   $("homeBanner").innerHTML = bannerHTML();
@@ -831,7 +715,7 @@ function renderColl(){
 }
 function renderLists(){
   document.querySelectorAll("#listToggle button").forEach(b => b.classList.toggle("on", b.dataset.m === state.mode));
-  if (state.view !== "wishlist" && state.view !== "inarrivo") return;
+  if (state.view !== "wishlist") return;
   const q = state.lq;
   const sec = (k, label, empty) => {
     const all = listOf(k), list = all.filter(d => matchQ(d, q));
@@ -840,7 +724,7 @@ function renderLists(){
         : state.mode === "cover" ? `<div class="cgrid">${list.map(coverItemHTML).join("")}</div>`
         : `<div class="case"><div class="shelf">${list.map(d => `<div class="slot">${spineHTML(d, d.id === state.newId ? "new" : "")}</div>`).join("")}</div></div>`}`;
   };
-  $("listsMain").innerHTML = state.view === "inarrivo" ? sec("incoming", "In arrivo", "I film ordinati e non ancora arrivati") : sec("wish", "Wishlist", "I film che vorresti comprare");
+  $("listsMain").innerHTML = sec("wish", "Da trovare", "I film che stai cercando");
   if (state.mode === "cover") hydrateCovers($("listsMain")); else requestAnimationFrame(() => fitSpines($("listsMain")));
 }
 $("q").addEventListener("input", e => { state.q = e.target.value.trim(); renderColl(); });
@@ -874,7 +758,7 @@ function goBackFromPerson(){
 }
 function starsHTML(r){ return [1,2,3,4,5].map(i => { const f = Math.max(0, Math.min(1, r - (i - 1))) * 100; return `<span class="sg" style="--f:${f}%">★</span>`; }).join(""); }
 function filmRow(d){
-  const st = d.list === "wish" ? " · in wishlist" : d.list === "incoming" ? " · in arrivo" : "";
+  const st = d.list ? " · da trovare" : "";
   const r = Number(d.rating) || 0;
   return `<button class="drow" data-id="${esc(d.id)}"><span class="th" data-cid="${esc(d.id)}">${spineSpan(d)}</span><span class="rinfo"><b>${esc(d.title)}</b><span>${d.year || "anno ?"}${(d.genres || []).length ? " · " + esc(d.genres.join(", ")) : ""}${st}</span></span>${r ? `<span class="rstars">${starsHTML(r)}</span>` : ""}</button>`;
 }
@@ -891,7 +775,7 @@ function renderPerson(){
     <h2 style="margin-top:8px;font-size:34px">${esc(name)}</h2>
     <h2>Film in collezione</h2>
     ${coll.map(filmRow).join("") || `<p class="note">Nessun film in collezione.</p>`}
-    ${other.length ? `<h2>In wishlist o in arrivo</h2>${other.map(filmRow).join("")}` : ""}
+    ${other.length ? `<h2>Da trovare</h2>${other.map(filmRow).join("")}` : ""}
     <div class="aphoto-wrap"><div class="aphoto" id="pPhoto">Nessuna foto</div></div>
     <h2>Info</h2>
     <textarea class="field infoarea" id="pInfo" placeholder="Biografia, filmografia, curiosità…">${esc(info)}</textarea>
@@ -1149,7 +1033,7 @@ function renderStats(){
   const nD = new Set(coll.flatMap(dirs).map(pkey)).size, mins = coll.reduce((s, d) => s + (Number(d.runtime) || 0), 0);
   $("viewStats").innerHTML = `<div class="apage">
     <div class="stat-hero"><div class="num">${coll.length}</div><div class="lbl">film in collezione</div></div>
-    <div class="stat-mini"><div><b>${nD}</b>registi</div><div><b>${Math.round(mins / 60)}</b>ore di film</div><div><b>${listOf("wish").length}</b>in wishlist</div><div><b>${listOf("incoming").length}</b>in arrivo</div></div>
+    <div class="stat-mini" style="grid-template-columns:repeat(3,1fr)"><div><b>${nD}</b>registi</div><div><b>${Math.round(mins / 60)}</b>ore di film</div><div><b>${listOf("wish").length}</b>da trovare</div></div>
     <h2>Esplora</h2>
     ${Object.entries(SUBS).map(([k, l]) => subcardHTML(k, l, k === "data" ? "" : groups(k).length)).join("")}
   </div>`;
@@ -1184,8 +1068,8 @@ function castHTML(t){
 }
 async function openDetail(id){
   const d = state.films.find(x => x.id === id); if (!d) return;
-  const status = d.list === "wish" ? "In wishlist" : d.list === "incoming" ? "In arrivo" : null;
-  const backLbl = { collezione: "Collezione", wishlist: "Wishlist", inarrivo: "In arrivo", statistiche: "Statistiche", regista: state.person || "Regista" }[state.view] || "Indietro";
+  const status = d.list ? "Da trovare" : null;
+  const backLbl = { collezione: "Collezione", wishlist: "Da trovare", statistiche: "Statistiche", regista: state.person || "Regista" }[state.view] || "Indietro";
   const ds = dirs(d);
   const chips = [status, d.kind === "tv" ? "Serie TV" : null, d.format || "Blu-ray", d.edition, d.discs > 1 ? d.discs + " dischi" : null, d.classification === "T" ? "Per tutti" : d.classification].filter(Boolean);
   $("det").innerHTML = `
@@ -1201,8 +1085,7 @@ async function openDetail(id){
         <div class="chips">${chips.map(c => `<span class="chip">${esc(c)}</span>`).join("")}</div>
       </div>
     </div>
-    ${d.list === "wish" ? `<button class="btn bigact" id="dOrder">Ordinato! Sposta in In arrivo</button><button class="btn ghost bigact" style="margin-top:8px" id="dGot">Mettilo in collezione</button>` : ""}
-    ${d.list === "incoming" ? `<button class="btn bigact" id="dGot">Arrivato! Mettilo in collezione</button>` : ""}
+    ${d.list ? `<button class="btn bigact" id="dGot">Trovato! Mettilo in collezione</button>` : ""}
     ${d.trailer || d.imdb ? `<div class="links">${d.trailer ? `<a class="btn ghost small" href="https://www.youtube.com/watch?v=${encodeURIComponent(d.trailer)}" target="_blank" rel="noopener">▶ Trailer</a>` : ""}${d.imdb ? `<a class="btn ghost small" href="https://www.imdb.com/title/${encodeURIComponent(d.imdb)}/" target="_blank" rel="noopener">IMDb</a>` : ""}</div>` : ""}
     ${d.summary ? `<div class="dsec"><h4>Trama</h4><div class="box">${esc(d.summary)}</div></div>` : ""}
     ${(d.genres || []).length ? `<div class="dsec"><h4>Genere</h4><div class="box">${d.genres.map(esc).join(", ")}</div></div>` : ""}
@@ -1226,13 +1109,12 @@ async function openDetail(id){
     state.films = state.films.filter(x => x.id !== id); dropCover(id); try { await idb.del(id); } catch(e){} try { persist(); } catch(e){}
     $("detOv").hidden = true; render();
   };
-  if ($("dOrder")) $("dOrder").onclick = () => moveTo(id, "incoming");
   if ($("dGot")) $("dGot").onclick = () => moveTo(id, null);
 }
 $("detOv").addEventListener("click", e => { if (e.target.id === "detOv") $("detOv").hidden = true; });
 async function moveTo(id, to){
   const d = state.films.find(x => x.id === id); if (!d) return;
-  const msg = to === "incoming" ? ["Spostare in In arrivo?", `«${d.title}» risulta ordinato e in attesa di consegna.`, "Sposta"] : ["Mettere in collezione?", `«${d.title}» va sullo scaffale, al suo posto in ordine alfabetico.`, "Conferma"];
+  const msg = ["Mettere in collezione?", `«${d.title}» va sullo scaffale, al suo posto in ordine alfabetico.`, "Conferma"];
   if (!(await askConfirm(...msg))) return;
   const i = state.films.findIndex(x => x.id === id);
   const nd = { ...d, updatedAt: new Date().toISOString() };
@@ -1341,7 +1223,7 @@ function openForm(d, list){
   state.formScroll = window.scrollY;
   state.editing = d ? d.id : null; state.formList = d ? (d.list || null) : list;
   state.pending = null; state.fgenres = [...(d?.genres || [])]; state.color = d?.color || "";
-  $("formTitle").textContent = d ? "Modifica film" : list === "wish" ? "Nuovo film in wishlist" : list === "incoming" ? "Nuovo film in arrivo" : "Nuovo film";
+  $("formTitle").textContent = d ? "Modifica film" : list ? "Nuovo film da trovare" : "Nuovo film";
   $("fSave").textContent = d ? "Salva" : list ? "Aggiungi alla lista" : "Metti in collezione";
   $("fDirAc").hidden = true;
   const fmt = d?.format || "Blu-ray";
@@ -1430,7 +1312,7 @@ function findDupes(title, year, exceptId){
   const t = dupKey(title); if (!t) return [];
   return state.films.filter(d => d.id !== exceptId && dupKey(d.title) === t && (!year || !d.year || Math.abs(d.year - year) <= 1));
 }
-const whereLbl = d => d.list === "wish" ? "in wishlist" : d.list === "incoming" ? "in arrivo" : "in collezione";
+const whereLbl = d => d.list ? "tra quelli da trovare" : "in collezione";
 async function confirmDupes(title, year, exceptId){
   const dup = findDupes(title, year, exceptId);
   if (!dup.length) return true;
@@ -1518,7 +1400,7 @@ async function prepareBackup(progress){
     if (++n % 20 === 0) progress(`Preparo il backup… ${Math.round(n / total * 100)}%`);
   }
   if (photoParts.length) parts.push(new Blob(photoParts));
-  const head = JSON.stringify({ app: "videoteca", version: 1, exportedAt: new Date().toISOString(), personInfo: m.personInfo || {}, personPhotoUrls: urls, personAuto: personAutoMap(), personManual: m.personManual || {}, genresExtra: extraGenres(), releases: getRels() });
+  const head = JSON.stringify({ app: "videoteca", version: 1, exportedAt: new Date().toISOString(), personInfo: m.personInfo || {}, personPhotoUrls: urls, personAuto: personAutoMap(), personManual: m.personManual || {}, genresExtra: extraGenres() });
   parts.unshift(head.slice(0, -1) + ',"personPhotos":{');
   parts.push('},"films":['); first = true;
   for (const d of state.films){
@@ -1562,7 +1444,7 @@ async function exportCSV(){
     Number(d.rating) > 0 ? String(d.rating).replace(".", ",") : "", (d.genres || []).join(", "), d.format || "Blu-ray", d.edition || "", d.discs || "",
     (d.cast || "").split("\n").join(" / "), (d.summary || "").replace(/\s*\n\s*/g, " "), d.languages || "", d.classification || "",
     d.imdb ? `https://www.imdb.com/title/${d.imdb}/` : "", d.trailer ? `https://www.youtube.com/watch?v=${d.trailer}` : "", (d.notes || "").split("\n").join(" / "),
-    d.list === "wish" ? "Wishlist" : d.list === "incoming" ? "In arrivo" : "Collezione"]);
+    d.list ? "Da trovare" : "Collezione"]);
   const cell = v => { const t = String(v ?? ""); return /[";\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
   const csv = "﻿" + [cols, ...rows].map(r => r.map(cell).join(";")).join("\r\n");
   return shareOrDownload(new File([csv], `videoteca-${new Date().toISOString().slice(0,10)}.csv`, { type: "text/csv" }), "File pronto: aprilo con Excel o Numbers.");
@@ -1587,11 +1469,10 @@ function parseBackup(text){
     color: typeof d.color === "string" && /^#[0-9a-f]{6}$/i.test(d.color) ? d.color : null,
     coverUrl: typeof d.coverUrl === "string" && /^https:\/\//.test(d.coverUrl) ? d.coverUrl : null, coverLocal: false,
     coverData: typeof d.coverData === "string" && /^data:image\//.test(d.coverData) ? d.coverData : null,
-    ...(d.list === "wish" || d.list === "incoming" ? { list: d.list } : {}),
+    ...(d.list === "wish" || d.list === "incoming" ? { list: "wish" } : {}),
     createdAt: typeof d.createdAt === "string" ? d.createdAt : new Date().toISOString() }));
   if (!out.length) throw new Error("Nel file non ho trovato film.");
   for (const f of ["personInfo", "personPhotos", "personPhotoUrls", "personAuto", "personManual"]) if (data && data[f] && typeof data[f] === "object") out[f] = data[f];
-  if (data && Array.isArray(data.releases)) out.releases = cleanRels(data.releases);
   if (data && Array.isArray(data.genresExtra)) out.genresExtra = data.genresExtra.filter(g => typeof g === "string" && g.trim()).map(g => g.trim().slice(0, 30));
   return out;
 }
@@ -1600,9 +1481,8 @@ async function applyImport(films){
   // Le foto già salvate sul dispositivo non vengono MAI cancellate da un import:
   // il backup aggiunge solo quelle che mancano.
   Object.keys(coverURLs).forEach(dropCover);
-  const pi = films.personInfo, pp = films.personPhotos, pu = films.personPhotoUrls, pa = films.personAuto, pm = films.personManual, rels = films.releases, gex = films.genresExtra;
-  ["personInfo","personPhotos","personPhotoUrls","personAuto","personManual","releases","genresExtra"].forEach(k => delete films[k]);
-  if (rels) setRels(rels);
+  const pi = films.personInfo, pp = films.personPhotos, pu = films.personPhotoUrls, pa = films.personAuto, pm = films.personManual, gex = films.genresExtra;
+  ["personInfo","personPhotos","personPhotoUrls","personAuto","personManual","genresExtra"].forEach(k => delete films[k]);
   if (gex) setExtra([...extraGenres(), ...gex]);
   if (pu){ const cur = { ...personUrlMap() }; for (const [k, v] of Object.entries(pu)){ if (typeof v !== "string" || !/^https:\/\//.test(v) || cur[k]) continue; let has = false; try { has = !!(await idb.get("person:" + k)); } catch(e){} if (!has) cur[k] = v; } setMeta("personPhotoUrls", cur); }
   if (pa) setMeta("personAuto", { ...pa, ...personAutoMap() });
