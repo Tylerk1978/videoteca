@@ -522,7 +522,7 @@ select.field{appearance:none;-webkit-appearance:none;background-image:linear-gra
 
 <script>
 (() => {
-const APP_VERSION = "1.5";
+const APP_VERSION = "1.8";
 const PALETTE = ["#1f1d1b","#7a2e2a","#23395b","#2f4a3a","#c49a3a","#e6d9bd","#2c5d63","#5a3550","#a2512b","#6b7b8c","#6b6a3a","#8c2f4b","#3d3a6b","#b8b2a3","#45604d","#9b6b43"];
 const FORMATS = ["Blu-ray", "4K Ultra HD", "4K + Blu-ray", "Blu-ray 3D", "DVD"];
 const KEY = "videoteca.films.v1", META_KEY = "videoteca.meta.v1";
@@ -827,30 +827,64 @@ $("viewPerson").addEventListener("click", e => {
 
 /* ---------- Foto dei registi: Wikipedia ---------- */
 const FILM_RE = /\b(director|filmmaker|film|films|actor|actress|screenwriter|producer|animator|animation|cinematographer|comedian)\b|regista|attore|attrice|sceneggiatore|produttore|animatore|fumettista|cinematografic/i;
-async function wikiPages(lang, params){
-  const u = `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*&redirects=1&prop=pageimages|description&piprop=thumbnail&pithumbsize=1000&` + params;
+async function wikiPages(lang, params, size = 1000){
+  const u = `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*&redirects=1&prop=pageimages|description&piprop=thumbnail&pithumbsize=${size}&` + params;
   const r = await fetch(u); if (!r.ok) throw 0;
   const j = await r.json(); return Object.values(j.query?.pages || {}).filter(p => !("missing" in p));
 }
-async function wikiCandidates(name){
+// quick = per la ricerca automatica: foto più piccola e si ferma alla prima lingua che trova qualcosa
+async function wikiCandidates(name, quick){
   const out = [];
   for (const lang of ["en", "it"]){
-    const suff = lang === "en" ? ["director", "filmmaker", "film director", "actor"] : ["regista", "attore"];
+    const suff = lang === "en" ? ["actor", "actress", "director", "filmmaker"] : ["attore", "attrice", "regista"];
     try {
-      const pages = await wikiPages(lang, "titles=" + encodeURIComponent([name, ...suff.map(x => `${name} (${x})`)].join("|")));
+      const pages = await wikiPages(lang, "titles=" + encodeURIComponent([name, ...suff.map(x => `${name} (${x})`)].join("|")), quick ? 500 : 1000);
       for (const p of pages) if (p.thumbnail && FILM_RE.test(p.description || "") && !out.some(o => o.src === p.thumbnail.source)) out.push({ src: p.thumbnail.source, thumb: p.thumbnail.source, label: p.title, from: "Wikipedia " + lang.toUpperCase() });
     } catch(e){}
+    if (quick && out.length) break;
   }
   return out;
 }
-async function imageUrlToBlob(src){
+/* TMDB (serve la chiave personale gratuita) */
+const tmdbKey = () => (getMeta().tmdbKey || "").trim();
+async function tmdbGet(path, key = tmdbKey()){
+  const bearer = key.length > 60;
+  const r = await fetch("https://api.themoviedb.org/3" + path + (bearer ? "" : (path.includes("?") ? "&" : "?") + "api_key=" + encodeURIComponent(key)), bearer ? { headers: { Authorization: "Bearer " + key } } : {});
+  if (!r.ok) throw { status: r.status };
+  return r.json();
+}
+async function tmdbCandidates(name, quick){
+  if (!tmdbKey()) return [];
+  try {
+    const j = await tmdbGet("/search/person?language=it-IT&query=" + encodeURIComponent(name));
+    const nk = tkey(name);
+    let list = (j.results || []).filter(p => p.profile_path);
+    const exact = list.filter(p => tkey(p.name) === nk || tkey(p.original_name) === nk).sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+    if (quick) list = exact.slice(0, 1); else list = [...exact, ...list.filter(p => !exact.includes(p))].slice(0, 6);
+    return list.map(p => ({ src: "https://image.tmdb.org/t/p/w500" + p.profile_path, thumb: "https://image.tmdb.org/t/p/w185" + p.profile_path, label: p.name + (p.known_for_department === "Directing" ? " (regia)" : ""), from: "TMDB" }));
+  } catch(e){ return []; }
+}
+/* Wikidata: foto anche di persone senza pagina Wikipedia con immagine */
+async function wikidataCandidates(name, quick){
+  try {
+    const s1 = await (await fetch("https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&origin=*&type=item&limit=6&language=en&uselang=it&search=" + encodeURIComponent(name))).json();
+    const hits = (s1.search || []).filter(h => tkey(h.label) === tkey(name) && FILM_RE.test(h.description || ""));
+    if (!hits.length) return [];
+    const ents = (await (await fetch("https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&origin=*&props=claims&ids=" + hits.map(h => h.id).join("|"))).json()).entities || {};
+    const files = hits.map(h => ents[h.id]?.claims?.P18?.[0]?.mainsnak?.datavalue?.value).filter(Boolean).slice(0, quick ? 1 : 3);
+    if (!files.length) return [];
+    const ii = await (await fetch("https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&prop=imageinfo&iiprop=url&iiurlwidth=" + (quick ? 500 : 1000) + "&titles=" + encodeURIComponent(files.map(f => "File:" + f).join("|")))).json();
+    return Object.values(ii.query?.pages || {}).map(p => p.imageinfo?.[0]?.thumburl).filter(Boolean).map(u => ({ src: u, thumb: u, label: name, from: "Wikidata" }));
+  } catch(e){ return []; }
+}
+async function imageUrlToBlob(src, max = 1000){
   const r = await fetch(src, { mode: "cors" }); if (!r.ok) throw 0;
   const b = await r.blob(); const url = URL.createObjectURL(b);
   try {
     const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
-    const k = Math.min(1, 1000 / Math.max(img.naturalWidth, img.naturalHeight)); const c = document.createElement("canvas");
+    const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight)); const c = document.createElement("canvas");
     c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-    return await new Promise(res => c.toBlob(res, "image/jpeg", 0.88));
+    return await new Promise(res => c.toBlob(res, "image/jpeg", max < 1000 ? 0.8 : 0.88));
   } finally { URL.revokeObjectURL(url); }
 }
 // Dove sta la foto di un regista: nel dispositivo (blob) oppure come indirizzo web.
@@ -868,26 +902,45 @@ function dropPersonURL(key){ if (pPhotoURLs[key]){ if (pPhotoURLs[key].startsWit
 async function savePersonPhoto(name, src, auto){
   const k = pkey(name), key = "person:" + k;
   const urls = { ...personUrlMap() };
-  try { const blob = await imageUrlToBlob(src); if (!blob) throw 0; await idb.set(key, blob); delete urls[k]; }
+  try { const blob = await imageUrlToBlob(src, auto ? 500 : 1000); if (!blob) throw 0; await idb.set(key, blob); delete urls[k]; }
   catch(e){ try { await idb.del(key); } catch(_){} urls[k] = src; }
-  setMeta("personPhotoUrls", urls); setPersonFlags(k, auto);
+  setMeta("personPhotoUrls", urls); setPersonFlags(k, auto); if (getChoices()[k]) setChoice(k, null);
   setMeta("personPhotoSrc", { ...(getMeta().personPhotoSrc || {}), [k]: src });
   dropPersonURL(key);
   setMeta("lastChangeAt", new Date().toISOString());
 }
+// Raccoglie le foto candidate da tutte le fonti, senza doppioni
+async function allCandidates(name, quick){
+  const [tm, wk] = await Promise.all([tmdbCandidates(name, quick), wikiCandidates(name, true)]);
+  const wd = await wikidataCandidates(name, true);
+  const seen = new Set(), out = [];
+  for (const c of [...tm, ...wk, ...wd]){ const f = decodeURIComponent(c.src.split("/").pop()).replace(/^\d+px-/, ""); if (seen.has(f)) continue; seen.add(f); out.push(c); }
+  return out;
+}
+// Una sola foto: la metto. Più foto: le lascio da scegliere a te.
 async function autoPersonPhoto(name){
   const k = pkey(name);
-  if (await personHasPhoto(k)) return (await personPhotoIsAuto(k)) ? "had" : "had";
-  const c = (await wikiCandidates(name))[0];
-  if (!c) return "none";
-  await savePersonPhoto(name, c.src, true);
-  return "new";
+  if (await personHasPhoto(k)) return "had";
+  const list = await allCandidates(name, true);
+  if (!list.length) return "none";
+  if (list.length === 1){ await savePersonPhoto(name, list[0].src, true); return "new"; }
+  setChoice(k, { name, cands: list.slice(0, 6).map(c => ({ src: c.src, thumb: c.thumb, from: c.from })) });
+  return "choose";
+}
+const getChoices = () => getMeta().photoChoices || {};
+function setChoice(k, v){ const m = { ...getChoices() }; if (v) m[k] = v; else delete m[k]; setMeta("photoChoices", Object.keys(m).length ? m : null); }
+// Tutte le persone dei film: registi e attori del cast, senza doppioni
+function allPeople(){
+  const m = new Map();
+  for (const d of state.films) for (const n of [...dirs(d), ...castRows(d).map(c => c.actor)]){ const k = pkey(n); if (k && !m.has(k)) m.set(k, n.trim()); }
+  return [...m.values()].sort((a, b) => a.localeCompare(b, "it"));
 }
 async function openPhotoPicker(name){
   $("menu").innerHTML = `<h3>Foto di ${esc(name)}</h3><p>Cerco le foto…</p>`; $("menuOv").hidden = false;
-  const list = await wikiCandidates(name);
+  const [tm, wk, wd] = await Promise.all([tmdbCandidates(name), wikiCandidates(name), wikidataCandidates(name)]);
+  const list = [...tm, ...wk, ...wd.filter(x => !wk.some(w => w.src.split("/").pop() === x.src.split("/").pop()))];
   $("menu").innerHTML = `<h3>Foto di ${esc(name)}</h3>
-    <p>${list.length ? "Tocca la foto che vuoi usare." : "Non ho trovato foto su Wikipedia per questo nome. Puoi caricarne una tua."}</p>
+    <p>${list.length ? "Tocca la foto che vuoi usare." : `Non ho trovato foto online per questo nome${tmdbKey() ? "" : " (con la chiave TMDB, dal menu, ne trovo molte di più)"}. Puoi caricarne una tua.`}</p>
     <div class="pgrid">${list.map((c, i) => `<button type="button" data-i="${i}"><img src="${esc(c.thumb)}" alt="" loading="lazy" onerror="this.parentNode.remove()"><span>${esc(c.label)} · ${c.from}</span></button>`).join("")}</div>
     <div class="actions"><button class="btn ghost" id="ppNo">Chiudi</button></div>`;
   $("ppNo").onclick = () => { $("menuOv").hidden = true; };
@@ -899,31 +952,88 @@ async function openPhotoPicker(name){
   };
 }
 let photoRun = null;
-function openPersonPhotosMenu(){
-  const names = [...new Set(state.films.flatMap(dirs).map(a => a.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "it"));
-  $("menu").innerHTML = `<h3>Foto dei registi</h3>
-    <p>Cerco su Wikipedia la foto dei registi che non ce l'hanno ancora. Le foto che hai già, soprattutto quelle caricate o scelte da te, non vengono mai toccate. Serve internet.</p>
+async function openPersonPhotosMenu(){
+  const all = allPeople();
+  $("menu").innerHTML = `<h3>Foto di attori e registi</h3><p>Controllo chi ha già la foto…</p>`;
+  const missing = [];
+  const waiting = getChoices();
+  for (const n of all) if (!waiting[pkey(n)] && !(await personHasPhoto(pkey(n)))) missing.push(n);
+  $("menu").innerHTML = `<h3>Foto di attori e registi</h3>
+    <p>${all.length} persone tra registi e attori dei tuoi film: ${missing.length ? `<b>${missing.length} senza foto</b>` : "nessuna da cercare"}${Object.keys(waiting).length ? `, ${Object.keys(waiting).length} con più foto da scegliere` : ""}.</p>
+    <p>Cerco la foto solo per chi non ce l'ha, ${tmdbKey() ? "prima su TMDB, poi su Wikipedia e Wikidata" : "su Wikipedia e Wikidata. <b>Consiglio:</b> inserisci la chiave TMDB dal menu, così trovo le foto di quasi tutti gli attori"}. Le foto che hai già, soprattutto quelle caricate o scelte da te, non vengono mai toccate. Serve internet; con tanti nomi ci vuole qualche minuto: tieni l'app aperta. Se la fermi o si interrompe, la prossima volta riparte da chi manca.</p>
     <p id="apProg" style="font-weight:600"></p>
     <div class="ok" id="apOk"></div>
-    <div class="actions"><button class="btn ghost" id="apBack">Indietro</button><button class="btn" id="apGo">Cerca le foto (${names.length} registi)</button></div>`;
+    <div class="actions"><button class="btn ghost" id="apBack">Indietro</button>${Object.keys(waiting).length ? `<button class="btn ghost" id="apPick">Scegli le foto (${Object.keys(waiting).length})</button>` : ""}${missing.length ? `<button class="btn" id="apGo">Cerca le foto</button>` : ""}</div>`;
   $("apBack").onclick = () => { if (photoRun) photoRun.stop = true; openMenu(); };
+  if ($("apPick")) $("apPick").onclick = () => { if (photoRun) photoRun.stop = true; openChoices(); };
+  if (!$("apGo")) return;
   $("apGo").onclick = async () => {
     if (photoRun){ photoRun.stop = true; return; }
-    const run = photoRun = { stop: false }; let i = 0, found = 0, had = 0, done = 0;
+    if (!navigator.onLine){ $("apOk").textContent = "Serve la connessione a internet."; return; }
+    const run = photoRun = { stop: false }; let i = 0, found = 0, done = 0, choose = 0;
+    let lock = null; try { if (navigator.wakeLock) lock = await navigator.wakeLock.request("screen"); } catch(e){}
     $("apGo").textContent = "Ferma"; $("apOk").textContent = "";
     const worker = async () => {
-      while (!run.stop && i < names.length){
-        const name = names[i++]; let res = "none"; try { res = await autoPersonPhoto(name); } catch(e){}
-        if (res === "new") found++; else if (res === "had") had++;
-        done++; if ($("apProg")) $("apProg").textContent = `${done} di ${names.length} · ${plural(found, "foto nuova", "foto nuove")}`;
+      while (!run.stop && i < missing.length){
+        const name = missing[i++]; let res = "none"; try { res = await autoPersonPhoto(name); } catch(e){}
+        if (res === "new" || res === "had") found++; else if (res === "choose") choose++;
+        done++; if ($("apProg")) $("apProg").textContent = `${done} di ${missing.length} · ${plural(found, "foto messa", "foto messe")} · ${choose} da scegliere`;
       }
     };
-    await Promise.all([worker(), worker(), worker()]);
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    try { if (lock) await lock.release(); } catch(e){}
     photoRun = null;
     Object.keys(pPhotoURLs).forEach(dropPersonURL);
-    const miss = done - found - had;
-    if ($("apOk")) $("apOk").textContent = `${run.stop ? "Fermato. " : "Fatto. "}${plural(found, "foto nuova", "foto nuove")}${had ? `, ${had} ${had === 1 ? "regista aveva" : "registi avevano"} già la foto` : ""}${miss ? `, ${miss} non trovati (per loro usa «Modifica foto» nella pagina del regista)` : ""}.`;
-    if ($("apGo")) $("apGo").textContent = "Cerca di nuovo";
+    const miss = done - found - choose;
+    if ($("apOk")) $("apOk").textContent = `${run.stop ? "Fermato. " : "Fatto. "}${plural(found, "foto messa", "foto messe")} (una sola trovata)${choose ? `; per ${plural(choose, "persona", "persone")} ho trovato più foto: scegli tu quale usare` : ""}${miss ? `; per ${miss} non ho trovato niente (puoi caricarla dalla sua pagina, con «Modifica foto»)` : ""}.`;
+    if ($("apGo")) $("apGo").textContent = run.stop ? "Riprendi" : "Cerca di nuovo";
+    if (!run.stop) $("apGo").onclick = () => openPersonPhotosMenu();
+    if (Object.keys(getChoices()).length && $("apBack")) $("apBack").insertAdjacentHTML("afterend", `<button class="btn" id="apPick">Scegli le foto (${Object.keys(getChoices()).length})</button>`), $("apPick").onclick = () => openChoices();
+  };
+}
+/* Scelta delle foto: una persona alla volta */
+function personFilmsLine(name){
+  const k = pkey(name), parts = [];
+  for (const d of state.films){ if (dirs(d).some(x => pkey(x) === k)) parts.push(`${d.title} (regia)`); else { const c = castRows(d).find(c => pkey(c.actor) === k); if (c) parts.push(c.role ? `${d.title}, ${c.role}` : d.title); } }
+  return parts.slice(0, 3).join(" · ") + (parts.length > 3 ? ` · e altri ${parts.length - 3}` : "");
+}
+function openChoices(skipped = 0){
+  const all = Object.entries(getChoices()), left = all.slice(skipped);
+  if (!left.length){
+    $("menu").innerHTML = `<h3>Foto da scegliere</h3><p>${all.length ? `${all.length === 1 ? "Resta 1 persona" : `Restano ${all.length} persone`} che hai lasciato per dopo.` : "Hai scelto tutte le foto."}</p><div class="actions"><button class="btn ghost" id="chBack">Indietro</button>${all.length ? `<button class="btn" id="chAgain">Ricomincia</button>` : ""}</div>`;
+    $("menuOv").hidden = false;
+    $("chBack").onclick = () => openPersonPhotosMenu();
+    if ($("chAgain")) $("chAgain").onclick = () => openChoices(0);
+    return;
+  }
+  const [k, ch] = left[0];
+  $("menu").innerHTML = `<h3>${esc(ch.name)}</h3>
+    <p style="margin:0">${esc(personFilmsLine(ch.name))}</p>
+    <p style="font-size:13px">${skipped + 1} di ${all.length} · tocca la foto giusta</p>
+    <div class="pgrid">${ch.cands.map((c, i) => `<button type="button" data-i="${i}"><img src="${esc(c.thumb)}" alt="" loading="lazy" onerror="this.parentNode.remove()"><span>${esc(c.from)}</span></button>`).join("")}</div>
+    <div class="actions" style="justify-content:space-between">
+      <button class="btn ghost small" id="chNone">Nessuna</button>
+      <button class="btn ghost small" id="chLater">Dopo</button>
+      <button class="btn ghost small" id="chAll">Prima foto per tutti</button>
+    </div>
+    <div class="actions"><button class="btn ghost" id="chBack">Indietro</button></div>`;
+  $("menuOv").hidden = false; $("menu").scrollTop = 0;
+  $("chBack").onclick = () => openPersonPhotosMenu();
+  $("chLater").onclick = () => openChoices(skipped + 1);
+  $("chNone").onclick = () => { setChoice(k, null); openChoices(skipped); };
+  $("menu").querySelector(".pgrid").onclick = async e => {
+    const b = e.target.closest("button[data-i]"); if (!b) return;
+    b.style.opacity = ".5";
+    await savePersonPhoto(ch.name, ch.cands[+b.dataset.i].src, false);
+    setChoice(k, null); openChoices(skipped);
+  };
+  $("chAll").onclick = async () => {
+    const rest = Object.entries(getChoices()).slice(skipped);
+    if (!(await askConfirm("Usare la prima foto per tutti?", `Per ${plural(rest.length, "persona", "persone")} rimaste metto la prima foto trovata (di solito quella di TMDB). Potrai sempre cambiarla dalla pagina della persona.`, "Conferma"))) return;
+    $("menu").innerHTML = `<h3>Foto da scegliere</h3><p id="chProg">Salvo le foto…</p>`;
+    let n = 0;
+    for (const [kk, c] of rest){ try { await savePersonPhoto(c.name, c.cands[0].src, true); } catch(e){} setChoice(kk, null); if ($("chProg")) $("chProg").textContent = `Salvo le foto… ${++n} di ${rest.length}`; }
+    openChoices(skipped);
   };
 }
 function openPersonEdit(){
@@ -931,7 +1041,7 @@ function openPersonEdit(){
   $("menu").innerHTML = `
     <h3>Foto di ${esc(state.person)}</h3>
     <button class="item" id="peUpload">Carica una foto<small>Dalla libreria foto del telefono</small></button>
-    <button class="item" id="peOnline">Scegli una foto online<small>Da Wikipedia · serve internet</small></button>
+    <button class="item" id="peOnline">Scegli una foto online<small>${tmdbKey() ? "Da TMDB, Wikipedia e Wikidata" : "Da Wikipedia e Wikidata"} · serve internet</small></button>
     ${has ? `<button class="item" id="peDel">Togli la foto<small>Ti chiedo conferma prima di eliminarla</small></button>` : ""}
     <div class="actions"><button type="button" class="btn ghost" id="peClose">Annulla</button></div>`;
   $("menuOv").hidden = false; $("menu").scrollTop = 0;
@@ -960,7 +1070,7 @@ $("personPhotoFile").addEventListener("change", async e => {
     c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
     URL.revokeObjectURL(url);
     await idb.set(key, await new Promise(res => c.toBlob(res, "image/jpeg", 0.85)));
-    const urls = { ...personUrlMap() }; delete urls[k]; setMeta("personPhotoUrls", urls); setPersonFlags(k, false);
+    const urls = { ...personUrlMap() }; delete urls[k]; setMeta("personPhotoUrls", urls); setPersonFlags(k, false); setChoice(k, null);
     dropPersonURL(key); setMeta("lastChangeAt", new Date().toISOString());
     drawPersonPhoto(state.person);
   } catch(err){}
@@ -1401,7 +1511,7 @@ async function prepareBackup(progress){
   const flush = () => { if (chunk.length){ parts.push(new Blob(chunk)); chunk = []; } };
   const m = getMeta();
   // Le foto scaricate da internet vanno nel backup come indirizzo (leggero); quelle tue come immagine.
-  const keys = [...new Set(state.films.flatMap(dirs).map(pkey))];
+  const keys = [...new Set(allPeople().map(pkey))];
   const srcs = m.personPhotoSrc || {}, urls = { ...personUrlMap() };
   const total = keys.length + state.films.length; let n = 0, first = true;
   const photoParts = [];
@@ -1551,7 +1661,7 @@ $("homeBanner").addEventListener("click", async e => {
 
 /* ---------- Copie automatiche giornaliere ---------- */
 const SNAP_PREFIX = "videoteca.", SNAP_DB = "videoteca-copie", SNAP_KEEP = 7;
-const SNAP_KEEP_META = ["lastBackupAt", "snoozeUntil", "firstSeenAt", "viewMode", "textScale"];
+const SNAP_KEEP_META = ["lastBackupAt", "snoozeUntil", "firstSeenAt", "viewMode", "textScale", "tmdbKey"];
 function dayKey(d = new Date()){ return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
 function snapDB(){ return new Promise((res, rej) => { const r = indexedDB.open(SNAP_DB, 1); r.onupgradeneeded = () => r.result.createObjectStore("snaps", { keyPath: "id" }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
 function snapCollect(){ const data = {}; for (let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if (k && k.startsWith(SNAP_PREFIX)) data[k] = localStorage.getItem(k); } return data; }
@@ -1629,7 +1739,8 @@ function openMenu(msg){
     <button class="item" id="mImport">Importa backup<small>Sostituisce la videoteca di questo dispositivo</small></button>
     <button class="item" id="mSnap">Ripristina una copia automatica<small>L'app salva da sola una copia al giorno e tiene le ultime 7</small></button>
     <button class="item" id="mPosters">Locandine mancanti<small>${noCover ? `${noCover === 1 ? "1 film senza locandina" : noCover + " film senza locandina"}: le cerco online` : "Tutti i film hanno la locandina"}</small></button>
-    <button class="item" id="mPhotos">Foto dei registi<small>Cerca su Wikipedia le foto che mancano</small></button>
+    <button class="item" id="mPhotos">Foto di attori e registi<small>${(n => n ? `${plural(n, "persona", "persone")} con più foto da scegliere` : "Cerca online le foto che mancano")(Object.keys(getChoices()).length)}</small></button>
+    <button class="item" id="mTmdb">TMDB<small>${tmdbKey() ? "Collegato: le foto si cercano prima su TMDB" : "Inserisci la chiave gratuita per trovare le foto di quasi tutti gli attori"}</small></button>
     <button class="item" id="mText">Dimensione testo<small>Ingrandisci o rimpicciolisci il testo nelle schede dei film</small></button>
     <button class="item" id="mCsv">Esporta in Excel<small>File .csv con tutti i film, da aprire con Excel o Numbers</small></button>
     <div class="ok" id="mOk">${esc(msg || "")}</div><div class="err" id="mErr"></div>
@@ -1642,8 +1753,26 @@ function openMenu(msg){
   $("mSnap").onclick = openSnapshots;
   $("mPosters").onclick = openPostersMenu;
   $("mPhotos").onclick = openPersonPhotosMenu;
+  $("mTmdb").onclick = openTmdb;
   $("mText").onclick = openTextSize;
   $("mCsv").onclick = async () => { $("mOk").textContent = await exportCSV(); };
+}
+function openTmdb(){
+  const cur = tmdbKey();
+  $("menu").innerHTML = `<h3>TMDB</h3>
+    <p>The Movie Database ha le foto di quasi tutti gli attori e registi. Per usarlo serve una chiave personale gratuita, che resta solo su questo telefono e non finisce nel backup.</p>
+    <p style="font-size:13px">Per crearla: registrati su <b>themoviedb.org</b> → icona del profilo → <b>Impostazioni</b> → <b>API</b> → <b>Crea</b> (tipo «Developer», uso personale). Poi copia qui la <b>Chiave API</b> (va bene anche il «Token di accesso in lettura»).</p>
+    <input class="field" id="tmTok" placeholder="Incolla qui la chiave" value="${esc(cur)}" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div class="err" id="tmErr"></div>
+    <div class="actions">${cur ? `<button class="btn ghost" id="tmDel">Scollega</button>` : ""}<button class="btn ghost" id="tmNo">Annulla</button><button class="btn" id="tmYes">Salva</button></div>`;
+  $("tmNo").onclick = () => openMenu();
+  if (cur) $("tmDel").onclick = async () => { if (!(await askConfirm("Scollegare TMDB?", "Le foto già trovate restano; le nuove ricerche useranno solo Wikipedia e Wikidata.", "Scollega", true))) return; setMeta("tmdbKey", null); openMenu("TMDB scollegato."); };
+  $("tmYes").onclick = async () => {
+    const t = $("tmTok").value.trim().replace(/^Bearer\s+/i, ""); if (!t){ $("tmErr").textContent = "Incolla la chiave."; return; }
+    $("tmErr").textContent = "";
+    try { await tmdbGet("/configuration", t); setMeta("tmdbKey", t); openMenu("TMDB collegato: ora cerca le foto da «Foto di attori e registi»."); }
+    catch(e){ if (!navigator.onLine){ setMeta("tmdbKey", t); openMenu("Chiave salvata: la verificherò alla prima ricerca."); } else $("tmErr").textContent = "La chiave non funziona: controlla di averla copiata tutta."; }
+  };
 }
 $("menuBtn").onclick = () => openMenu();
 $("menuOv").addEventListener("click", e => { if (e.target.id === "menuOv") $("menuOv").hidden = true; });
