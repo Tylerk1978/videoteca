@@ -363,6 +363,11 @@ select.field{appearance:none;-webkit-appearance:none;background-image:linear-gra
 .cline span{color:var(--muted);text-align:right}
 .cline .art{background:none;border:0;padding:0;cursor:pointer;font:600 inherit/1.4 Inter,sans-serif;color:var(--ink);text-align:left;text-decoration:underline;text-decoration-color:rgba(217,166,90,.45);text-underline-offset:3px}
 .drow .th{position:relative}.drow .th img{position:absolute;inset:0}
+/* Statistiche: nome intero (va a capo se serve), barra più corta */
+.grow{grid-template-columns:minmax(0,1fr) 64px 28px;gap:10px}
+.grow .y{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.25;overflow-wrap:anywhere}
+.grow .track{height:8px}
+.stat-mini + .grp{margin-top:16px}
 </style>
 </head>
 <body>
@@ -522,7 +527,7 @@ select.field{appearance:none;-webkit-appearance:none;background-image:linear-gra
 
 <script>
 (() => {
-const APP_VERSION = "1.9";
+const APP_VERSION = "2.1";
 const PALETTE = ["#1f1d1b","#7a2e2a","#23395b","#2f4a3a","#c49a3a","#e6d9bd","#2c5d63","#5a3550","#a2512b","#6b7b8c","#6b6a3a","#8c2f4b","#3d3a6b","#b8b2a3","#45604d","#9b6b43"];
 const FORMATS = ["Blu-ray", "4K Ultra HD", "4K + Blu-ray", "Blu-ray 3D", "DVD"];
 const KEY = "videoteca.films.v1", META_KEY = "videoteca.meta.v1";
@@ -549,6 +554,17 @@ function filmSort(a, b){ return sortName(a.title).localeCompare(sortName(b.title
 const dirs = d => Array.isArray(d.directors) ? d.directors.filter(Boolean) : [];
 const dirStr = d => dirs(d).join(", ");
 // Cast: una riga per attore, "Attore — Personaggio"
+// Cognome: ultima parola, con le particelle (De Niro, Van Damme, Di Caprio) e senza Jr./III
+const PARTICLES = new Set(["da","de","del","della","dei","di","du","van","von","der","den","le","la","st.","mac","dos","das"]);
+function splitName(n){
+  const t = String(n || "").trim().split(/\s+/); if (t.length < 2) return { first: "", last: t[0] || "" };
+  let end = t.length; const suff = [];
+  while (end > 1 && /^(jr\.?|sr\.?|ii|iii|iv)$/i.test(t[end - 1].replace(/,$/, ""))) suff.unshift(t[--end]);
+  let i = end - 1; while (i > 1 && PARTICLES.has(t[i - 1].toLowerCase())) i--;
+  return { first: t.slice(0, i).join(" "), last: t.slice(i, end).join(" ") + (suff.length ? " " + suff.join(" ") : "") };
+}
+const surnameFirst = n => { const p = splitName(n); return p.first ? `${p.last} ${p.first}` : p.last; };
+const surnameSort = (a, b) => sortName(surnameFirst(a)).localeCompare(sortName(surnameFirst(b)), "it");
 const castRows = d => String(d.cast || "").split("\n").map(l => l.trim()).filter(Boolean).map(l => { const [a, ...c] = l.split(/\s+[—–-]\s+/); return { actor: a.trim(), role: c.join(" – ").trim() }; });
 const pkey = a => norm(String(a || "").trim());
 function extraGenres(){ const x = getMeta().genresExtra; return Array.isArray(x) ? x.filter(g => typeof g === "string" && g) : []; }
@@ -692,9 +708,9 @@ function renderHome(){
 function matchQ(d, q){ if (!q) return true; q = norm(q); return norm(d.title).includes(q) || norm(d.originalTitle).includes(q) || norm(dirStr(d)).includes(q) || norm(d.cast).includes(q) || (d.genres || []).some(g => norm(g).includes(q)); }
 function renderColl(){
   const all = collection();
-  const directors = [...new Set(all.flatMap(dirs))].sort((a,b) => a.localeCompare(b, "it", { sensitivity: "base" }));
+  const directors = [...new Set(all.flatMap(dirs))].sort(surnameSort);
   if (state.fdir && !directors.includes(state.fdir)) state.fdir = "";
-  $("dirSel").innerHTML = `<option value="">Registi</option>` + directors.map(a => `<option value="${esc(a)}" ${a === state.fdir ? "selected" : ""}>${esc(a)}</option>`).join("");
+  $("dirSel").innerHTML = `<option value="">Registi</option>` + directors.map(a => `<option value="${esc(a)}" ${a === state.fdir ? "selected" : ""}>${esc(surnameFirst(a))}</option>`).join("");
   const genres = allGenres();
   if (state.genre && !genres.includes(state.genre)) state.genre = "";
   $("genreSel").innerHTML = `<option value="">Generi</option>` + genres.map(g => `<option ${g === state.genre ? "selected" : ""}>${esc(g)}</option>`).join("");
@@ -1042,12 +1058,29 @@ function openPersonEdit(){
     <h3>Foto di ${esc(state.person)}</h3>
     <button class="item" id="peUpload">Carica una foto<small>Dalla libreria foto del telefono</small></button>
     <button class="item" id="peOnline">Scegli una foto online<small>${tmdbKey() ? "Da TMDB, Wikipedia e Wikidata" : "Da Wikipedia e Wikidata"} · serve internet</small></button>
+    <button class="item" id="peName">Cambia nome<small>Corregge il nome in tutti i film</small></button>
     ${has ? `<button class="item" id="peDel">Togli la foto<small>Ti chiedo conferma prima di eliminarla</small></button>` : ""}
     <div class="actions"><button type="button" class="btn ghost" id="peClose">Annulla</button></div>`;
   $("menuOv").hidden = false; $("menu").scrollTop = 0;
   $("peClose").onclick = () => { $("menuOv").hidden = true; };
   $("peUpload").onclick = () => { $("menuOv").hidden = true; $("personPhotoFile").value = ""; $("personPhotoFile").click(); };
   $("peOnline").onclick = () => { $("menuOv").hidden = true; openPhotoPicker(state.person); };
+  $("peName").onclick = () => {
+    const old = state.person;
+    $("menu").innerHTML = `<h3>Cambia nome</h3><p>Il nuovo nome sostituisce «${esc(old)}» in tutti i film. Foto e note restano.</p>
+      <input class="field" id="pnNew" value="${esc(old)}" autocomplete="off" autocapitalize="words">
+      <div class="err" id="pnErr"></div>
+      <div class="actions"><button class="btn ghost" id="pnNo">Annulla</button><button class="btn" id="pnYes">Salva</button></div>`;
+    $("pnNo").onclick = () => { $("menuOv").hidden = true; };
+    $("pnYes").onclick = async () => {
+      const nv = $("pnNew").value.replace(/\s+/g, " ").trim();
+      if (!nv){ $("pnErr").textContent = "Scrivi il nome."; return; }
+      if (nv === old){ $("menuOv").hidden = true; return; }
+      if (!(await askConfirm("Cambiare il nome?", `«${old}» diventa «${nv}» in tutti i film.`, "Cambia"))) return;
+      try { await renamePerson(old, nv); } catch(e){ $("pnErr").textContent = errText(e); return; }
+      $("menuOv").hidden = true; state.person = nv; render();
+    };
+  };
   if (has) $("peDel").onclick = async () => {
     $("menuOv").hidden = true;
     if (!(await askConfirm("Togliere la foto?", "La foto verrà eliminata.", "Togli", true))) return;
@@ -1075,6 +1108,38 @@ $("personPhotoFile").addEventListener("change", async e => {
     drawPersonPhoto(state.person);
   } catch(err){}
 });
+
+/* ---------- Cambiare il nome di una persona (in tutti i film) ---------- */
+async function renamePerson(oldName, newName){
+  const ok = pkey(oldName), nk = pkey(newName);
+  if (!ok || !nk) return;
+  state.films = state.films.map(d => {
+    let ch = false;
+    const ds = dirs(d).map(x => { if (pkey(x) === ok){ ch = true; return newName; } return x; });
+    const rows = castRows(d);
+    if (rows.some(c => pkey(c.actor) === ok)){ ch = true; }
+    if (!ch) return d;
+    const cast = rows.length ? rows.map(c => (pkey(c.actor) === ok ? newName : c.actor) + (c.role ? " — " + c.role : "")).join("\n") : d.cast;
+    return { ...d, directors: [...new Set(ds)], cast };
+  });
+  persist();
+  if (ok === nk) return;
+  const m = getMeta();
+  for (const f of ["personInfo", "personPhotoUrls", "personAuto", "personManual", "personPhotoSrc", "photoChoices"]){
+    const o = m[f]; if (!o || !(ok in o)) continue;
+    const n = { ...o }; if (!(nk in n)) n[nk] = f === "photoChoices" ? { ...o[ok], name: newName } : o[ok]; delete n[ok]; setMeta(f, n);
+  }
+  try { const b = await idb.get("person:" + ok); if (b){ if (!(await idb.get("person:" + nk))) await idb.set("person:" + nk, b); await idb.del("person:" + ok); } } catch(e){}
+  dropPersonURL("person:" + ok); dropPersonURL("person:" + nk);
+}
+// Nomi importati da MovieBuddy in alfabeti non occidentali: traslitterati una volta sola
+const NAME_FIX = {"坂本千夏": "Chika Sakamoto", "劉家輝": "Gordon Liu", "高木均": "Hitoshi Takagi", "佳穂成美": "Narumi Kaho", "我修院達也": "Tatsuya Gashuin", "渡辺謙": "Ken Watanabe", "内藤剛志": "Takashi Naito", "佐治和也": "Kazuya Saji", "小野武彦": "Takehiko Ono", "上條恒彦": "Tsunehiko Kamijo", "厚木那奈美": "Nanami Atsugi", "大泉洋": "Yo Oizumi", "柊瑠美": "Rumi Hiiragi", "玉井夕海": "Yumi Tamai", "糸井重里": "Shigesato Itoi", "高杉真宙": "Mahiro Takasugi", "鷲尾真知子": "Machiko Washio", "広瀬正志": "Masashi Hirose", "和久井映見": "Emi Wakui", "雨笠利幸": "Toshiyuki Amagasa", "丸山優子": "Yuko Maruyama", "栗山千明": "Chiaki Kuriyama", "鈴木れい子": "Reiko Suzuki", "はやし・こば": "Koba Hayashi", "דניאלה קרטס‎": "Daniela Kertesz", "שמוליק לוי": "Shmulik Levi", "Александр Годунов": "Alexander Godunov", "Юрий Колокольников": "Yuri Kolokolnikov", "Юлия Снигирь": "Yuliya Snigir", "Олег Тактаров": "Oleg Taktarov", "Сергей Колесников": "Sergei Kolesnikov"};
+async function fixNames(){
+  if (getMeta().nameFix1) return;
+  const present = new Set(state.films.flatMap(d => [...dirs(d), ...castRows(d).map(c => c.actor)]));
+  for (const [a, b] of Object.entries(NAME_FIX)) if (present.has(a)) await renamePerson(a, b);
+  setMeta("nameFix1", true);
+}
 
 /* ---------- Locandine mancanti ---------- */
 const tkey = s => norm(s).replace(/[^a-z0-9]+/g, "");
@@ -1132,7 +1197,7 @@ function groups(kind){
   if (kind === "anno") return arr.sort((a,b) => (a.label === "Anno sconosciuto") - (b.label === "Anno sconosciuto") || Number(a.label) - Number(b.label));
   if (kind === "decennio") return arr.sort((a,b) => a.label.localeCompare(b.label));
   if (kind === "voto") return arr.sort((a,b) => (a.key === "Senza voto") - (b.key === "Senza voto") || Number(b.key) - Number(a.key));
-  if ((kind === "regista" || kind === "attore") && getMeta().personSort === "alfa") return arr.sort((a,b) => sortName(a.label).localeCompare(sortName(b.label), "it"));
+  if ((kind === "regista" || kind === "attore") && getMeta().personSort === "alfa") return arr.sort((a,b) => (/^(Regia non|Cast non)/.test(a.label) - /^(Regia non|Cast non)/.test(b.label)) || surnameSort(a.label, b.label));
   return arr.sort((a,b) => (/^(Senza|Regia non|Cast non)/.test(a.label) - /^(Senza|Regia non|Cast non)/.test(b.label)) || (b.items.length - a.items.length) || a.label.localeCompare(b.label, "it"));
 }
 const SUBS = { genere: "Per genere", regista: "Per regista", attore: "Per attore", data: "Per anno di uscita", voto: "Per voto" };
@@ -1155,7 +1220,7 @@ function renderStats(){
     if (sub === "voto"){ const r = coll.filter(d => Number(d.rating) > 0); const avg = r.length ? r.reduce((s, d) => s + Number(d.rating), 0) / r.length : 0; extra = `<div class="stat-mini" style="grid-template-columns:repeat(3,1fr)"><div><b>${r.length ? avg.toFixed(1).replace(".", ",") : "–"}</b>voto medio</div><div><b>${r.length}</b>con voto</div><div><b>${coll.length - r.length}</b>senza voto</div></div>`; }
     $("viewStats").innerHTML = `<div class="apage"><button class="backlink" id="sBack">‹ ${DATE_SUBS[sub] ? SUBS.data : "Statistiche"}</button><h2 style="margin-top:8px">${STAT_TITLES[sub]}</h2>${extra}
       ${sub === "voto" ? "" : `<p class="note">${gs.length} voci. ${sub === "regista" ? "Tocca un regista per aprire la sua pagina." : sub === "attore" ? "Tocca un attore per aprire la sua pagina." : "Tocca una riga per vedere i film."}</p>`}
-      ${gs.map(g => { const open = state.statsOpen === g.key; return `<div class="grp${open ? " open" : ""}"><button class="grow" data-k="${esc(g.key)}" data-l="${esc(g.label)}"><span class="y">${sub === "voto" && g.key !== "Senza voto" ? `<span class="rstars vstars">${starsHTML(Number(g.key))}</span>` : esc(g.label)}</span><span class="track"><span class="fill" style="width:${Math.max(3, g.items.length / max * 100)}%"></span></span><span class="n">${g.items.length}</span></button>
+      ${gs.map(g => { const open = state.statsOpen === g.key; return `<div class="grp${open ? " open" : ""}"><button class="grow" data-k="${esc(g.key)}" data-l="${esc(g.label)}"><span class="y">${sub === "voto" && g.key !== "Senza voto" ? `<span class="rstars vstars">${starsHTML(Number(g.key))}</span>` : (sub === "regista" || sub === "attore") && al && !/^(Regia non|Cast non)/.test(g.label) ? esc(surnameFirst(g.label)) : esc(g.label)}</span><span class="track"><span class="fill" style="width:${Math.max(3, g.items.length / max * 100)}%"></span></span><span class="n">${g.items.length}</span></button>
         ${open ? `<div class="grp-list">${g.items.map(d => `<button class="grp-item" data-id="${esc(d.id)}"><b>${esc(d.title)}</b><span>${[d.year, dirStr(d)].filter(Boolean).map(esc).join(" · ")}</span></button>`).join("")}</div>` : ""}</div>`; }).join("")}</div>`;
     return;
   }
@@ -1373,7 +1438,7 @@ $("fFormat").addEventListener("change", () => { if (!state.pending) drawFormCove
 /* Regia: menu a tendina con i registi già presenti */
 function knownDirectors(){
   const m = new Map(); for (const d of state.films) for (const n of dirs(d)){ const k = pkey(n); if (!m.has(k)) m.set(k, { name: n, n: 0 }); m.get(k).n++; }
-  return [...m.values()].sort((a,b) => sortName(a.name).localeCompare(sortName(b.name), "it"));
+  return [...m.values()].sort((a,b) => surnameSort(a.name, b.name));
 }
 const lastSeg = () => { const v = $("fDir").value; const i = v.lastIndexOf(","); return { head: i >= 0 ? v.slice(0, i + 1) + " " : "", seg: v.slice(i + 1).trim() }; };
 function drawDirAc(all){
@@ -1627,6 +1692,7 @@ async function applyImport(films){
     delete d.coverData;
   }
   state.films = films; try { persist(); } catch(e){}
+  setMeta("nameFix1", null); try { await fixNames(); } catch(e){}
   setMeta("lastBackupAt", new Date().toISOString());
   render(); openMenu(`Importati ${nFilm(films.length)}.`);
 }
@@ -1783,6 +1849,7 @@ document.addEventListener("keydown", e => { if (e.key === "Escape"){ if (!$("cfO
 /* ---------- Avvio ---------- */
 $("credits").innerHTML = `<b>Videoteca</b><br>Versione ${APP_VERSION} · by Massimo Merigo`;
 state.films = load();
+fixNames().then(() => render()).catch(() => {});
 state.mode = getMeta().viewMode === "cover" ? "cover" : "spine";
 if (!getMeta().firstSeenAt) setMeta("firstSeenAt", new Date().toISOString());
 applyTextScale();
