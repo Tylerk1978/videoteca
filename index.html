@@ -527,7 +527,7 @@ select.field{appearance:none;-webkit-appearance:none;background-image:linear-gra
 
 <script>
 (() => {
-const APP_VERSION = "2.1";
+const APP_VERSION = "2.2";
 const PALETTE = ["#1f1d1b","#7a2e2a","#23395b","#2f4a3a","#c49a3a","#e6d9bd","#2c5d63","#5a3550","#a2512b","#6b7b8c","#6b6a3a","#8c2f4b","#3d3a6b","#b8b2a3","#45604d","#9b6b43"];
 const FORMATS = ["Blu-ray", "4K Ultra HD", "4K + Blu-ray", "Blu-ray 3D", "DVD"];
 const KEY = "videoteca.films.v1", META_KEY = "videoteca.meta.v1";
@@ -564,6 +564,8 @@ function splitName(n){
   return { first: t.slice(0, i).join(" "), last: t.slice(i, end).join(" ") + (suff.length ? " " + suff.join(" ") : "") };
 }
 const surnameFirst = n => { const p = splitName(n); return p.first ? `${p.last} ${p.first}` : p.last; };
+const pn = n => esc(surnameFirst(n));
+const dirsShown = d => dirs(d).map(surnameFirst).join(", ");
 const surnameSort = (a, b) => sortName(surnameFirst(a)).localeCompare(sortName(surnameFirst(b)), "it");
 const castRows = d => String(d.cast || "").split("\n").map(l => l.trim()).filter(Boolean).map(l => { const [a, ...c] = l.split(/\s+[—–-]\s+/); return { actor: a.trim(), role: c.join(" – ").trim() }; });
 const pkey = a => norm(String(a || "").trim());
@@ -651,7 +653,7 @@ function fitSpines(root){
 function coverItemHTML(d){
   const col = filmColor(d);
   const img = d.coverUrl && !d.coverLocal ? `<img src="${esc(d.coverUrl)}" alt="" loading="lazy" onerror="this.remove()">` : "";
-  return `<button class="citem" data-id="${esc(d.id)}"><div class="cimg" data-local="${d.coverLocal ? 1 : ""}" style="--c:${col};--t:${lum(col) > .6 ? "#2a2018" : "#f4ead6"}"><div class="ph">${esc(d.title)}</div>${img}</div><b>${esc(d.title)}</b><span>${[d.year, dirStr(d)].filter(Boolean).map(esc).join(" · ")}</span></button>`;
+  return `<button class="citem" data-id="${esc(d.id)}"><div class="cimg" data-local="${d.coverLocal ? 1 : ""}" style="--c:${col};--t:${lum(col) > .6 ? "#2a2018" : "#f4ead6"}"><div class="ph">${esc(d.title)}</div>${img}</div><b>${esc(d.title)}</b><span>${[d.year, dirsShown(d)].filter(Boolean).map(esc).join(" · ")}</span></button>`;
 }
 function hydrateCovers(root){
   root.querySelectorAll('.cimg[data-local="1"]').forEach(async el => {
@@ -705,7 +707,7 @@ function renderHome(){
   $("homeStatsSub").textContent = mins ? `${Math.round(mins / 60)} ore di film sugli scaffali` : "Generi, registi, anni";
   $("homeBanner").innerHTML = bannerHTML();
 }
-function matchQ(d, q){ if (!q) return true; q = norm(q); return norm(d.title).includes(q) || norm(d.originalTitle).includes(q) || norm(dirStr(d)).includes(q) || norm(d.cast).includes(q) || (d.genres || []).some(g => norm(g).includes(q)); }
+function matchQ(d, q){ if (!q) return true; q = norm(q); return norm(d.title).includes(q) || norm(d.originalTitle).includes(q) || norm(dirStr(d)).includes(q) || norm(dirsShown(d)).includes(q) || norm(d.cast).includes(q) || castRows(d).some(c => norm(surnameFirst(c.actor)).includes(q)) || (d.genres || []).some(g => norm(g).includes(q)); }
 function renderColl(){
   const all = collection();
   const directors = [...new Set(all.flatMap(dirs))].sort(surnameSort);
@@ -806,7 +808,7 @@ function renderPerson(){
   const r = state.personReturn;
   $("viewPerson").innerHTML = `<div class="apage">
     <button class="backlink" id="pBack">‹ ${r ? `Torna a «${esc(r.title || "")}»` : "Indietro"}</button>
-    <h2 style="margin-top:8px;font-size:34px">${esc(name)}</h2>
+    <h2 style="margin-top:8px;font-size:34px">${pn(name)}</h2>
     ${directed.length ? `<h2>Regia</h2>${directed.map(d => filmRow(d)).join("")}` : ""}
     ${acted.length ? `<h2>Come attore</h2>${acted.map(x => filmRow(x.d, x.r.role ? "nel ruolo di " + x.r.role : "")).join("")}` : ""}
     ${!directed.length && !acted.length ? `<p class="note">Nessun film.</p>` : ""}
@@ -952,10 +954,10 @@ function allPeople(){
   return [...m.values()].sort((a, b) => a.localeCompare(b, "it"));
 }
 async function openPhotoPicker(name){
-  $("menu").innerHTML = `<h3>Foto di ${esc(name)}</h3><p>Cerco le foto…</p>`; $("menuOv").hidden = false;
+  $("menu").innerHTML = `<h3>Foto di ${pn(name)}</h3><p>Cerco le foto…</p>`; $("menuOv").hidden = false;
   const [tm, wk, wd] = await Promise.all([tmdbCandidates(name), wikiCandidates(name), wikidataCandidates(name)]);
   const list = [...tm, ...wk, ...wd.filter(x => !wk.some(w => w.src.split("/").pop() === x.src.split("/").pop()))];
-  $("menu").innerHTML = `<h3>Foto di ${esc(name)}</h3>
+  $("menu").innerHTML = `<h3>Foto di ${pn(name)}</h3>
     <p>${list.length ? "Tocca la foto che vuoi usare." : `Non ho trovato foto online per questo nome${tmdbKey() ? "" : " (con la chiave TMDB, dal menu, ne trovo molte di più)"}. Puoi caricarne una tua.`}</p>
     <div class="pgrid">${list.map((c, i) => `<button type="button" data-i="${i}"><img src="${esc(c.thumb)}" alt="" loading="lazy" onerror="this.parentNode.remove()"><span>${esc(c.label)} · ${c.from}</span></button>`).join("")}</div>
     <div class="actions"><button class="btn ghost" id="ppNo">Chiudi</button></div>`;
@@ -1023,7 +1025,7 @@ function openChoices(skipped = 0){
     return;
   }
   const [k, ch] = left[0];
-  $("menu").innerHTML = `<h3>${esc(ch.name)}</h3>
+  $("menu").innerHTML = `<h3>${pn(ch.name)}</h3>
     <p style="margin:0">${esc(personFilmsLine(ch.name))}</p>
     <p style="font-size:13px">${skipped + 1} di ${all.length} · tocca la foto giusta</p>
     <div class="pgrid">${ch.cands.map((c, i) => `<button type="button" data-i="${i}"><img src="${esc(c.thumb)}" alt="" loading="lazy" onerror="this.parentNode.remove()"><span>${esc(c.from)}</span></button>`).join("")}</div>
@@ -1055,7 +1057,7 @@ function openChoices(skipped = 0){
 function openPersonEdit(){
   const has = $("pPhoto") && $("pPhoto").classList.contains("has");
   $("menu").innerHTML = `
-    <h3>Foto di ${esc(state.person)}</h3>
+    <h3>Foto di ${pn(state.person)}</h3>
     <button class="item" id="peUpload">Carica una foto<small>Dalla libreria foto del telefono</small></button>
     <button class="item" id="peOnline">Scegli una foto online<small>${tmdbKey() ? "Da TMDB, Wikipedia e Wikidata" : "Da Wikipedia e Wikidata"} · serve internet</small></button>
     <button class="item" id="peName">Cambia nome<small>Corregge il nome in tutti i film</small></button>
@@ -1067,7 +1069,7 @@ function openPersonEdit(){
   $("peOnline").onclick = () => { $("menuOv").hidden = true; openPhotoPicker(state.person); };
   $("peName").onclick = () => {
     const old = state.person;
-    $("menu").innerHTML = `<h3>Cambia nome</h3><p>Il nuovo nome sostituisce «${esc(old)}» in tutti i film. Foto e note restano.</p>
+    $("menu").innerHTML = `<h3>Cambia nome</h3><p>Il nuovo nome sostituisce «${pn(old)}» in tutti i film. Scrivilo come Nome Cognome: l'app lo mostra da sola come Cognome Nome. Foto e note restano.</p>
       <input class="field" id="pnNew" value="${esc(old)}" autocomplete="off" autocapitalize="words">
       <div class="err" id="pnErr"></div>
       <div class="actions"><button class="btn ghost" id="pnNo">Annulla</button><button class="btn" id="pnYes">Salva</button></div>`;
@@ -1220,8 +1222,8 @@ function renderStats(){
     if (sub === "voto"){ const r = coll.filter(d => Number(d.rating) > 0); const avg = r.length ? r.reduce((s, d) => s + Number(d.rating), 0) / r.length : 0; extra = `<div class="stat-mini" style="grid-template-columns:repeat(3,1fr)"><div><b>${r.length ? avg.toFixed(1).replace(".", ",") : "–"}</b>voto medio</div><div><b>${r.length}</b>con voto</div><div><b>${coll.length - r.length}</b>senza voto</div></div>`; }
     $("viewStats").innerHTML = `<div class="apage"><button class="backlink" id="sBack">‹ ${DATE_SUBS[sub] ? SUBS.data : "Statistiche"}</button><h2 style="margin-top:8px">${STAT_TITLES[sub]}</h2>${extra}
       ${sub === "voto" ? "" : `<p class="note">${gs.length} voci. ${sub === "regista" ? "Tocca un regista per aprire la sua pagina." : sub === "attore" ? "Tocca un attore per aprire la sua pagina." : "Tocca una riga per vedere i film."}</p>`}
-      ${gs.map(g => { const open = state.statsOpen === g.key; return `<div class="grp${open ? " open" : ""}"><button class="grow" data-k="${esc(g.key)}" data-l="${esc(g.label)}"><span class="y">${sub === "voto" && g.key !== "Senza voto" ? `<span class="rstars vstars">${starsHTML(Number(g.key))}</span>` : (sub === "regista" || sub === "attore") && al && !/^(Regia non|Cast non)/.test(g.label) ? esc(surnameFirst(g.label)) : esc(g.label)}</span><span class="track"><span class="fill" style="width:${Math.max(3, g.items.length / max * 100)}%"></span></span><span class="n">${g.items.length}</span></button>
-        ${open ? `<div class="grp-list">${g.items.map(d => `<button class="grp-item" data-id="${esc(d.id)}"><b>${esc(d.title)}</b><span>${[d.year, dirStr(d)].filter(Boolean).map(esc).join(" · ")}</span></button>`).join("")}</div>` : ""}</div>`; }).join("")}</div>`;
+      ${gs.map(g => { const open = state.statsOpen === g.key; return `<div class="grp${open ? " open" : ""}"><button class="grow" data-k="${esc(g.key)}" data-l="${esc(g.label)}"><span class="y">${sub === "voto" && g.key !== "Senza voto" ? `<span class="rstars vstars">${starsHTML(Number(g.key))}</span>` : (sub === "regista" || sub === "attore") && !/^(Regia non|Cast non)/.test(g.label) ? pn(g.label) : esc(g.label)}</span><span class="track"><span class="fill" style="width:${Math.max(3, g.items.length / max * 100)}%"></span></span><span class="n">${g.items.length}</span></button>
+        ${open ? `<div class="grp-list">${g.items.map(d => `<button class="grp-item" data-id="${esc(d.id)}"><b>${esc(d.title)}</b><span>${[d.year, dirsShown(d)].filter(Boolean).map(esc).join(" · ")}</span></button>`).join("")}</div>` : ""}</div>`; }).join("")}</div>`;
     return;
   }
   const nD = new Set(coll.flatMap(dirs).map(pkey)).size, mins = coll.reduce((s, d) => s + (Number(d.runtime) || 0), 0);
@@ -1258,12 +1260,12 @@ function askConfirm(title, text, ok = "Conferma", danger = false){
 /* ---------- Scheda film ---------- */
 const fmtDate = iso => iso.split("-").reverse().join("-");
 function castHTML(d){
-  return castRows(d).map(c => `<div class="cline"><button class="art" data-person="${esc(c.actor)}">${esc(c.actor)}</button>${c.role ? `<span>${esc(c.role)}</span>` : ""}</div>`).join("");
+  return castRows(d).map(c => `<div class="cline"><button class="art" data-person="${esc(c.actor)}">${pn(c.actor)}</button>${c.role ? `<span>${esc(c.role)}</span>` : ""}</div>`).join("");
 }
 async function openDetail(id){
   const d = state.films.find(x => x.id === id); if (!d) return;
   const status = d.list ? "Da trovare" : null;
-  const backLbl = { collezione: "Collezione", wishlist: "Da trovare", statistiche: "Statistiche", regista: state.person || "Indietro" }[state.view] || "Indietro";
+  const backLbl = { collezione: "Collezione", wishlist: "Da trovare", statistiche: "Statistiche", regista: state.person ? surnameFirst(state.person) : "Indietro" }[state.view] || "Indietro";
   const ds = dirs(d);
   const chips = [status, d.kind === "tv" ? "Serie TV" : null, d.edition, d.discs > 1 ? d.discs + " dischi" : null].filter(Boolean);
   $("det").innerHTML = `
@@ -1273,7 +1275,7 @@ async function openDetail(id){
       <div class="dinfo">
         <h3 style="margin-bottom:6px">${esc(d.title)}</h3>
         ${d.originalTitle && tkey(d.originalTitle) !== tkey(d.title) ? `<div class="otitle">${esc(d.originalTitle)}</div>` : ""}
-        ${ds.length ? `<div class="yr">Regia di ${ds.map(n => `<button class="art" data-person="${esc(n)}">${esc(n)}</button>`).join(", ")}</div>` : ""}
+        ${ds.length ? `<div class="yr">Regia di ${ds.map(n => `<button class="art" data-person="${esc(n)}">${pn(n)}</button>`).join(", ")}</div>` : ""}
         <div class="yr">${d.releaseDate ? `Uscito il ${fmtDate(d.releaseDate)}` : d.year ? `Uscito nel ${d.year}` : "Anno non indicato"}</div>
         ${d.runtime ? `<div class="yr">Durata ${fmtRuntime(d.runtime)}</div>` : ""}
         ${d.rating ? `<div class="yr" style="letter-spacing:2px;font-size:17px">${starsHTML(d.rating)}</div>` : ""}
@@ -1447,7 +1449,7 @@ function drawDirAc(all){
   if (q && !all){ list = list.filter(a => norm(a.name).includes(q)).sort((a,b) => (!norm(a.name).startsWith(q)) - (!norm(b.name).startsWith(q))); if (list.length === 1 && norm(list[0].name) === q) list = []; }
   const box = $("fDirAc");
   if (!list.length){ box.hidden = true; return; }
-  box.innerHTML = list.map(a => `<button type="button" data-a="${esc(a.name)}">${esc(a.name)}<small>${nFilm(a.n)}</small></button>`).join("");
+  box.innerHTML = list.map(a => `<button type="button" data-a="${esc(a.name)}">${pn(a.name)}<small>${nFilm(a.n)}</small></button>`).join("");
   box.hidden = false; box.scrollTop = 0;
 }
 $("fDir").addEventListener("input", e => { if (e.isTrusted) drawDirAc(false); });
@@ -1635,9 +1637,9 @@ async function exportBackup(){
 }
 async function exportCSV(){
   const cols = ["Titolo","Titolo originale","Regia","Anno","Data di uscita","Durata (min)","Voto","Genere","Formato","Edizione","Dischi","Cast","Trama","Lingue","Classificazione","IMDb","Trailer","Note","Stato"];
-  const rows = [...state.films].sort(filmSort).map(d => [d.title, d.originalTitle || "", dirStr(d), d.year || "", d.releaseDate ? fmtDate(d.releaseDate) : "", d.runtime || "",
+  const rows = [...state.films].sort(filmSort).map(d => [d.title, d.originalTitle || "", dirsShown(d), d.year || "", d.releaseDate ? fmtDate(d.releaseDate) : "", d.runtime || "",
     Number(d.rating) > 0 ? String(d.rating).replace(".", ",") : "", (d.genres || []).join(", "), d.format || "Blu-ray", d.edition || "", d.discs || "",
-    (d.cast || "").split("\n").join(" / "), (d.summary || "").replace(/\s*\n\s*/g, " "), d.languages || "", d.classification || "",
+    castRows(d).map(c => surnameFirst(c.actor) + (c.role ? " — " + c.role : "")).join(" / "), (d.summary || "").replace(/\s*\n\s*/g, " "), d.languages || "", d.classification || "",
     d.imdb ? `https://www.imdb.com/title/${d.imdb}/` : "", d.trailer ? `https://www.youtube.com/watch?v=${d.trailer}` : "", (d.notes || "").split("\n").join(" / "),
     d.list ? "Da trovare" : "Collezione"]);
   const cell = v => { const t = String(v ?? ""); return /[";\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
