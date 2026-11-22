@@ -369,6 +369,7 @@ select.field{appearance:none;-webkit-appearance:none;background-image:linear-gra
 .grow .track{height:8px}
 .stat-mini + .grp{margin-top:16px}
 .pphoto{margin-top:6px}.pphoto .aphoto{width:46%;max-width:200px}
+#menuBtn svg{display:block;margin:auto}.item.folder{position:relative;padding-right:40px}.item.folder::after{content:"›";position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:24px;opacity:.7}
 </style>
 </head>
 <body>
@@ -380,7 +381,7 @@ select.field{appearance:none;-webkit-appearance:none;background-image:linear-gra
       <div class="sub" id="sub">&nbsp;</div>
     </div>
   </div>
-  <div class="hbtns"><button class="iconbtn" id="menuBtn" aria-label="Menu">⋯</button><button class="btn" id="addBtn" hidden>+ Aggiungi film</button></div>
+  <div class="hbtns"><button class="iconbtn" id="menuBtn" aria-label="Impostazioni"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg></button><button class="btn" id="addBtn" hidden>+ Aggiungi film</button></div>
 </header>
 
 <section id="viewHome" class="home">
@@ -528,7 +529,7 @@ select.field{appearance:none;-webkit-appearance:none;background-image:linear-gra
 
 <script>
 (() => {
-const APP_VERSION = "2.6";
+const APP_VERSION = "2.7";
 const PALETTE = ["#1f1d1b","#7a2e2a","#23395b","#2f4a3a","#c49a3a","#e6d9bd","#2c5d63","#5a3550","#a2512b","#6b7b8c","#6b6a3a","#8c2f4b","#3d3a6b","#b8b2a3","#45604d","#9b6b43"];
 const FORMATS = ["Blu-ray", "4K Ultra HD", "4K + Blu-ray", "Blu-ray 3D", "DVD"];
 const KEY = "videoteca.films.v1", META_KEY = "videoteca.meta.v1";
@@ -985,7 +986,7 @@ async function openPersonPhotosMenu(){
     <p id="apProg" style="font-weight:600"></p>
     <div class="ok" id="apOk"></div>
     <div class="actions"><button class="btn ghost" id="apBack">Indietro</button>${Object.keys(waiting).length ? `<button class="btn ghost" id="apPick">Scegli le foto (${Object.keys(waiting).length})</button>` : ""}${missing.length ? `<button class="btn" id="apGo">Cerca le foto</button>` : ""}</div>`;
-  $("apBack").onclick = () => { if (photoRun) photoRun.stop = true; openMenu(); };
+  $("apBack").onclick = () => { if (photoRun) photoRun.stop = true; openMissingMenu(); };
   if ($("apPick")) $("apPick").onclick = () => { if (photoRun) photoRun.stop = true; openChoices(); };
   if (!$("apGo")) return;
   $("apGo").onclick = async () => {
@@ -1067,7 +1068,7 @@ function openBiosMenu(){
     <p id="bxProg" style="font-weight:600"></p><div class="ok" id="bxOk"></div>
     <div class="actions"><button class="btn ghost" id="bxBack">Indietro</button>${missing.length ? `<button class="btn" id="bxGo">Scarica le biografie</button>` : ""}</div>`;
   $("menuOv").hidden = false; $("menu").scrollTop = 0;
-  $("bxBack").onclick = () => { if (bioRun) bioRun.stop = true; openMenu(); };
+  $("bxBack").onclick = () => { if (bioRun) bioRun.stop = true; openMissingMenu(); };
   if (!$("bxGo")) return;
   $("bxGo").onclick = async () => {
     if (bioRun){ bioRun.stop = true; return; }
@@ -1278,7 +1279,7 @@ function openPostersMenu(){
     <p>${todo().length ? `${todo().length === 1 ? "1 film non ha" : todo().length + " film non hanno"} la locandina. La cerco su Apple TV confrontando titolo e anno; se non sono sicura lascio stare, e puoi sceglierla tu da «Modifica → Cerca online». Le locandine che hai già non vengono toccate. Serve internet.` : "Tutti i film hanno la locandina."}</p>
     <p id="poProg" style="font-weight:600"></p><div class="ok" id="poOk"></div>
     <div class="actions"><button class="btn ghost" id="poBack">Indietro</button>${todo().length ? `<button class="btn" id="poGo">Cerca (${nFilm(todo().length)})</button>` : ""}</div>`;
-  $("poBack").onclick = () => { if (posterRun) posterRun.stop = true; openMenu(); };
+  $("poBack").onclick = () => { if (posterRun) posterRun.stop = true; openMissingMenu(); };
   if (!$("poGo")) return;
   $("poGo").onclick = async () => {
     if (posterRun){ posterRun.stop = true; return; }
@@ -1816,11 +1817,11 @@ async function applyImport(films){
   state.films = films; try { persist(); } catch(e){}
   setMeta("nameFix1", null); try { await fixNames(); } catch(e){}
   setMeta("lastBackupAt", new Date().toISOString());
-  render(); openMenu(`Importati ${nFilm(films.length)}.`);
+  render(); openBackupMenu(`Importati ${nFilm(films.length)}.`);
 }
 $("importFile").addEventListener("change", async e => {
   const f = e.target.files && e.target.files[0]; if (!f) return;
-  if ($("menuOv").hidden) openMenu();
+  if ($("menuOv").hidden || !$("mErr")) openBackupMenu();
   let films; try { films = parseBackup(await f.text()); } catch(err){ $("mErr").textContent = err.message; return; }
   if (state.films.length && !(await askConfirm("Importare il backup?", `Il file contiene ${nFilm(films.length)} e sostituisce i ${state.films.length} attuali. Le foto che hai caricato restano tutte.`, "Sostituisci", true))) return;
   applyImport(films);
@@ -1846,7 +1847,7 @@ function bannerHTML(){
 function snoozeTomorrow(){ const d = new Date(); d.setHours(24, 0, 0, 0); return d.toISOString(); }
 $("homeBanner").addEventListener("click", async e => {
   if (e.target.id === "bkLater"){ setMeta("snoozeUntil", snoozeTomorrow()); render(); }
-  if (e.target.id === "bkNow"){ openMenu(); await exportBackup(); }
+  if (e.target.id === "bkNow"){ openBackupMenu(); await exportBackup(); }
 });
 
 /* ---------- Copie automatiche giornaliere ---------- */
@@ -1882,7 +1883,7 @@ async function openSnapshots(){
     <div class="err" id="snErr"></div>
     <div class="actions"><button class="btn ghost" id="snBack">Indietro</button></div>`;
   $("menuOv").hidden = false; $("menu").scrollTop = 0;
-  $("snBack").onclick = () => openMenu();
+  $("snBack").onclick = () => openBackupMenu();
   $("menu").querySelectorAll("[data-snap]").forEach(b => b.onclick = async () => {
     const s = list.find(x => x.id === b.dataset.snap); if (!s) return;
     if (!(await askConfirm("Ripristinare questa copia?", `I dati torneranno com'erano: ${snapLabel(s).toLowerCase()} (${nFilm(snapCount(s.data))}). Le modifiche fatte dopo andranno perse; prima di procedere salvo comunque una copia dello stato attuale.`, "Ripristina", true))) return;
@@ -1921,33 +1922,55 @@ function openTextSize(){
 
 /* ---------- Menu ---------- */
 function openMenu(msg){
-  const noCover = state.films.filter(d => !d.coverUrl && !d.coverLocal).length;
+  const noCover = state.films.filter(d => !d.coverUrl && !d.coverLocal).length, nCh = Object.keys(getChoices()).length;
   $("menu").innerHTML = `
     <h3>Menu</h3>
     <p>I film sono salvati su questo dispositivo e funzionano anche offline.</p>
-    <button class="item" id="mExport">Esporta backup<small>${nFilm(state.films.length)} in un file .json · ${esc(lastBackupText())}</small></button>
-    <button class="item" id="mImport">Importa backup<small>Sostituisce la videoteca di questo dispositivo</small></button>
-    <button class="item" id="mSnap">Ripristina una copia automatica<small>L'app salva da sola una copia al giorno e tiene le ultime 7</small></button>
-    <button class="item" id="mPosters">Locandine mancanti<small>${noCover ? `${noCover === 1 ? "1 film senza locandina" : noCover + " film senza locandina"}: le cerco online` : "Tutti i film hanno la locandina"}</small></button>
-    <button class="item" id="mPhotos">Foto di attori e registi<small>${(n => n ? `${plural(n, "persona", "persone")} con più foto da scegliere` : "Cerca online le foto che mancano")(Object.keys(getChoices()).length)}</small></button>
-    <button class="item" id="mBios">Biografie di attori e registi<small>Scarica in un colpo le biografie che mancano</small></button>
+    <button class="item folder" id="mBackup">Backup<small>Esporta, importa, Excel e copie automatiche · ${esc(lastBackupText())}</small></button>
+    <button class="item folder" id="mMissing">Info mancanti<small>${[noCover ? (noCover === 1 ? "1 film senza locandina" : noCover + " film senza locandina") : "", nCh ? plural(nCh, "foto", "foto") + " da scegliere" : ""].filter(Boolean).join(" · ") || "Locandine, foto e biografie di attori e registi"}</small></button>
     <button class="item" id="mTmdb">TMDB<small>${tmdbKey() ? "Collegato: le foto si cercano prima su TMDB" : "Inserisci la chiave gratuita per trovare le foto di quasi tutti gli attori"}</small></button>
     <button class="item" id="mText">Dimensione testo<small>Ingrandisci o rimpicciolisci il testo nelle schede dei film</small></button>
-    <button class="item" id="mCsv">Esporta in Excel<small>File .csv con tutti i film, da aprire con Excel o Numbers</small></button>
-    <div class="ok" id="mOk">${esc(msg || "")}</div><div class="err" id="mErr"></div>
+    <div class="ok" id="mOk">${esc(msg || "")}</div>
     <div class="actions"><button class="btn ghost" id="mClose">Chiudi</button></div>
     <p style="text-align:center;font-size:12px;margin-top:14px">Versione ${APP_VERSION}</p>`;
-  $("menuOv").hidden = false;
+  $("menuOv").hidden = false; $("menu").scrollTop = 0;
+  $("mClose").onclick = () => { $("menuOv").hidden = true; };
+  $("mBackup").onclick = () => openBackupMenu();
+  $("mMissing").onclick = openMissingMenu;
+  $("mTmdb").onclick = openTmdb;
+  $("mText").onclick = openTextSize;
+}
+function openBackupMenu(msg){
+  $("menu").innerHTML = `
+    <h3>Backup</h3>
+    <button class="item" id="mExport">Esporta backup<small>${nFilm(state.films.length)} in un file .json · ${esc(lastBackupText())}</small></button>
+    <button class="item" id="mCsv">Esporta in Excel<small>File .csv con tutti i film, da aprire con Excel o Numbers</small></button>
+    <button class="item" id="mImport">Importa backup<small>Sostituisce la videoteca di questo dispositivo</small></button>
+    <button class="item" id="mSnap">Ripristina una copia automatica<small>L'app salva da sola una copia al giorno e tiene le ultime 7</small></button>
+    <div class="ok" id="mOk">${esc(msg || "")}</div><div class="err" id="mErr"></div>
+    <div class="actions"><button class="btn ghost" id="mBack">Indietro</button><button class="btn ghost" id="mClose">Chiudi</button></div>`;
+  $("menuOv").hidden = false; $("menu").scrollTop = 0;
+  $("mBack").onclick = () => openMenu();
   $("mClose").onclick = () => { $("menuOv").hidden = true; };
   $("mExport").onclick = () => exportBackup();
+  $("mCsv").onclick = async () => { $("mOk").textContent = await exportCSV(); };
   $("mImport").onclick = () => { $("importFile").value = ""; $("importFile").click(); };
   $("mSnap").onclick = openSnapshots;
+}
+function openMissingMenu(){
+  const noCover = state.films.filter(d => !d.coverUrl && !d.coverLocal).length, nCh = Object.keys(getChoices()).length;
+  $("menu").innerHTML = `
+    <h3>Info mancanti</h3>
+    <button class="item" id="mPosters">Locandine mancanti<small>${noCover ? `${noCover === 1 ? "1 film senza locandina" : noCover + " film senza locandina"}: le cerco online` : "Tutti i film hanno la locandina"}</small></button>
+    <button class="item" id="mPhotos">Foto di attori e registi<small>${nCh ? `${plural(nCh, "persona", "persone")} con più foto da scegliere` : "Cerca online le foto che mancano"}</small></button>
+    <button class="item" id="mBios">Biografie di attori e registi<small>Scarica in un colpo le biografie che mancano</small></button>
+    <div class="actions"><button class="btn ghost" id="mBack">Indietro</button><button class="btn ghost" id="mClose">Chiudi</button></div>`;
+  $("menuOv").hidden = false; $("menu").scrollTop = 0;
+  $("mBack").onclick = () => openMenu();
+  $("mClose").onclick = () => { $("menuOv").hidden = true; };
   $("mPosters").onclick = openPostersMenu;
   $("mPhotos").onclick = openPersonPhotosMenu;
-  $("mTmdb").onclick = openTmdb;
   $("mBios").onclick = openBiosMenu;
-  $("mText").onclick = openTextSize;
-  $("mCsv").onclick = async () => { $("mOk").textContent = await exportCSV(); };
 }
 function openTmdb(){
   const cur = tmdbKey();
